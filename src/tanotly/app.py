@@ -5,7 +5,7 @@ from typing import Optional
 
 from textual.app import App, ComposeResult
 from textual.binding import Binding
-from textual.containers import Horizontal, Vertical, VerticalScroll
+from textual.containers import Horizontal, Vertical, VerticalScroll, Container
 from textual.widgets import Footer, Header, Input, Static, Tree
 
 import numpy as np
@@ -13,6 +13,7 @@ import xarray as xr
 
 from .data import DataReader, DatasetInfo, DataNode
 from .data.models import NodeType
+from .visualization import DataVisualizer, format_statistics, format_sample_values
 
 
 class TanotlyApp(App[None]):
@@ -58,6 +59,11 @@ class TanotlyApp(App[None]):
 
     VerticalScroll {
         height: 100%;
+        overflow-y: auto;
+    }
+
+    #detail-container {
+        scrollbar-gutter: stable;
     }
 
     /* Search input - docked at bottom, hidden by default */
@@ -96,7 +102,8 @@ class TanotlyApp(App[None]):
         Binding("h", "cursor_left", "Left", show=False),
         Binding("l", "cursor_right", "Right", show=False),
         Binding("p", "toggle_plot", "Plot"),
-        Binding("y", "copy_info", "Copy", show=False),
+        Binding("y", "copy_info", "Copy Info", show=False),
+        Binding("c", "copy_tree", "Copy Tree"),
     ]
 
     def __init__(self, file_path: Optional[str] = None):
@@ -113,6 +120,8 @@ class TanotlyApp(App[None]):
         # Plot mode
         self.show_plot = False
         self.current_node: Optional[DataNode] = None
+        # Debounce timer for navigation
+        self._debounce_timer = None
 
     def compose(self) -> ComposeResult:
         yield Header(show_clock=True)
@@ -126,8 +135,9 @@ class TanotlyApp(App[None]):
                     "[bold yellow]Welcome to Tanotly![/bold yellow]\n\n"
                     "[dim]Navigation: ↑/↓/j/k, ←/→/h/l to expand\n"
                     "Search: / then type, n/N for next/prev\n"
+                    "Plot: p to toggle visualization\n"
                     "Quit: q or Esc[/dim]",
-                    id="detail"
+                    id="welcome"
                 )
 
         # Search input (hidden by default)
@@ -149,19 +159,25 @@ class TanotlyApp(App[None]):
 
             tree = self.query_one("#tree", Tree)
             tree.clear()
-            tree.show_root = False
+            tree.show_root = True
             tree.show_guides = True
             tree.guide_depth = 4
+
+            # Set root label and data
+            tree.root.label = self._format_label(self.dataset.root_node)
+            tree.root.data = self.dataset.root_node
+
             self._populate_tree(tree.root, self.dataset.root_node)
 
-            # Expand first level
+            # Expand root and first level
+            tree.root.expand()
             for child in tree.root.children:
-                child.expand()
+                if child.data and child.data.node_type != NodeType.ATTRIBUTE:
+                    child.expand()
 
-            # Focus tree and select first node
+            # Focus tree and select root node to show global attributes
             tree.focus()
-            if tree.root.children:
-                tree.select_node(tree.root.children[0])
+            tree.select_node(tree.root)
 
             self._update_status(
                 f"{Path(path).name} | {len(self.dataset.variables)} variables | Use ↑↓ arrows"
@@ -171,16 +187,27 @@ class TanotlyApp(App[None]):
 
     def _populate_tree(self, tree_node, data_node: DataNode) -> None:
         """Recursively populate tree."""
-        for child in data_node.children:
-            # Skip attributes - they'll be shown in detail view
-            # if child.node_type == NodeType.ATTRIBUTE:
-            #     continue
+        # First add non-attribute children (groups, variables, dimensions)
+        non_attr_children = [c for c in data_node.children if c.node_type != NodeType.ATTRIBUTE]
+        for child in non_attr_children:
             label = self._format_label(child)
             # Only allow expansion if node has children
             allow_expand = len(child.children) > 0
             node = tree_node.add(label, data=child, allow_expand=allow_expand)
             if child.children:
                 self._populate_tree(node, child)
+
+        # Then add attributes as an "Attributes" group if there are any
+        attr_children = [c for c in data_node.children if c.node_type == NodeType.ATTRIBUTE]
+        if attr_children:
+            # Create an attributes group node
+            attrs_label = f"[magenta]🏷️  Attributes ({len(attr_children)})[/magenta]"
+            attrs_node = tree_node.add(attrs_label, data=None, allow_expand=True)
+
+            # Add each attribute as a child
+            for attr in attr_children:
+                attr_label = self._format_label(attr)
+                attrs_node.add(attr_label, data=attr, allow_expand=False)
 
     def _get_data_type_label(self, node: DataNode) -> str:
         """Get Panoply-style data type label (2D, 3D, Geo2D, etc.)."""
@@ -211,44 +238,39 @@ class TanotlyApp(App[None]):
             return f"{ndim}D"
 
     def _format_label(self, node: DataNode) -> str:
-        """Format node label with icons and styling."""
-        # Icon mapping for different node types
+        """Format node label WITHOUT icons (Tree widget already provides arrows)."""
         if node.node_type == NodeType.ROOT:
-            icon = "🏠"
-            name_color = "bold magenta"
-            return f"{icon} [{name_color}]{node.name}[/{name_color}]"
+            return f"[bold magenta]{node.name}[/bold magenta]"
 
         elif node.node_type == NodeType.GROUP:
-            icon = "📂"
-            name_color = "yellow"
             # Count non-attribute children
             child_count = sum(1 for c in node.children if c.node_type != NodeType.ATTRIBUTE)
-            return f"{icon} [{name_color}]{node.name}[/{name_color}] [dim]({child_count})[/dim]"
+            return f"[yellow]{node.name}[/yellow] [dim]({child_count})[/dim]"
 
         elif node.node_type == NodeType.VARIABLE:
-            icon = "🌡️"
-            name_color = "cyan"
             shape = node.metadata.get("shape", "")
             dtype = node.metadata.get("dtype", "")
             data_type = self._get_data_type_label(node)
 
             if shape and dtype:
                 shape_str = "×".join(str(s) for s in shape)
-                return f"{icon} [{name_color}]{node.name}[/{name_color}] [dim]\\[{shape_str}][/dim] [green]{data_type}[/green] [dim]{dtype}[/dim]"
-            return f"{icon} [{name_color}]{node.name}[/{name_color}]"
+                return f"[cyan]{node.name}[/cyan] [dim]({shape_str}) {data_type} {dtype}[/dim]"
+            return f"[cyan]{node.name}[/cyan]"
 
         elif node.node_type == NodeType.DIMENSION:
-            icon = "📏"
-            name_color = "blue"
             size = node.metadata.get("size", "")
             if size:
-                return f"{icon} [{name_color}]{node.name}[/{name_color}] [dim]({size})[/dim]"
-            return f"{icon} [{name_color}]{node.name}[/{name_color}]"
+                return f"[blue]{node.name}[/blue] [dim]({size})[/dim]"
+            return f"[blue]{node.name}[/blue]"
 
         elif node.node_type == NodeType.ATTRIBUTE:
-            icon = "🏷️"
-            name_color = "magenta"
-            return f"{icon} [{name_color}]{node.name}[/{name_color}]"
+            # Attribute name already includes the value (e.g., "units: meters")
+            # Escape any Rich markup in the name
+            name_escaped = node.name.replace('[', '\\[').replace(']', '\\]')
+            # Truncate if too long
+            if len(name_escaped) > 60:
+                name_escaped = name_escaped[:57] + "..."
+            return f"[magenta]{name_escaped}[/magenta]"
 
         else:
             return node.name
@@ -256,180 +278,166 @@ class TanotlyApp(App[None]):
     def on_tree_node_highlighted(self, event: Tree.NodeHighlighted) -> None:  # type: ignore
         """Show details when node is highlighted."""
         if event.node.data:
-            self.show_details(event.node.data)
+            # Use call_later to debounce rapid navigation
+            try:
+                self._debounce_timer.stop()
+            except (AttributeError, RuntimeError):
+                pass
+            self._debounce_timer = self.set_timer(0.05, lambda: self.show_details(event.node.data))
 
     def show_details(self, node: DataNode) -> None:
         """Display node details."""
         self.current_node = node  # Track current node for plot/copy
-        detail = self.query_one("#detail", Static)
 
-        # Build content with icons and better formatting
-        icon = self._get_node_icon(node)
-        content = f"{icon} [bold cyan]{node.name}[/bold cyan]\n"
-        content += "─" * 60 + "\n\n"
-
-        # Type with color coding
-        type_color = self._get_type_color(node.node_type)
-        content += f"[{type_color}]● Type:[/{type_color}] {node.node_type.value}\n"
-        content += f"[dim]● Path:[/dim] {node.path}\n\n"
-
-        # Metadata in a structured format
-        if node.metadata:
-            content += "[bold yellow]📊 Metadata[/bold yellow]\n"
-            content += "─" * 60 + "\n"
-            for key, val in node.metadata.items():
-                if key == "shape":
-                    shape_str = " × ".join(str(s) for s in val)
-                    content += f"  [cyan]▸ {key}:[/cyan] {shape_str}\n"
-                elif key == "dims":
-                    dims_str = ", ".join(str(d) for d in val)
-                    content += f"  [cyan]▸ {key}:[/cyan] ({dims_str})\n"
-                elif key == "size":
-                    # Format large numbers with commas
-                    size_formatted = f"{val:,}" if isinstance(val, int) else str(val)
-                    content += f"  [cyan]▸ {key}:[/cyan] {size_formatted}\n"
-                else:
-                    content += f"  [cyan]▸ {key}:[/cyan] {val}\n"
-            content += "\n"
-
-        # Attributes (Panoply-style with : prefix)
-        if node.attributes:
-            content += "[bold magenta]🏷️  Attributes[/bold magenta]\n"
-            content += "─" * 60 + "\n"
-            for key, val in node.attributes.items():
-                val_str = str(val)
-                if len(val_str) > 80:
-                    val_str = val_str[:77] + "..."
-                content += f"  [magenta]:{key}[/magenta] = {val_str}\n"
-            content += "\n"
-
-        # Data preview for variables
-        if node.node_type == NodeType.VARIABLE and self.dataset:
-            content += self._get_data_preview(node)
-
-        detail.update(content)
-
-    def _create_ascii_plot(self, data: np.ndarray) -> str:
-        """Create an ASCII plot of the data."""
         try:
-            # Remove NaN values
-            clean_data = data[~np.isnan(data)] if data.dtype.kind == 'f' else data
+            detail_container = self.query_one("#detail-container", VerticalScroll)
 
-            if clean_data.size == 0:
-                return "[dim]No valid data to plot[/dim]\n"
+            # Clear existing content
+            detail_container.remove_children()
 
-            plot_content = "[bold cyan]📊 ASCII Plot[/bold cyan]\n"
+            # Build header
+            icon = self._get_node_icon(node)
+            header_content = f"{icon} [bold cyan]{node.name}[/bold cyan]\n"
+            header_content += "-" * 60 + "\n\n"
 
-            if data.ndim == 1 and data.size <= 100:
-                # Line plot for 1D data
-                plot_content += self._create_line_plot(clean_data)
-            elif data.ndim == 1:
-                # Histogram for larger 1D data
-                plot_content += self._create_histogram(clean_data)
-            elif data.ndim == 2:
-                # Heatmap for 2D data (sample if too large)
-                if data.shape[0] > 20 or data.shape[1] > 40:
-                    sample_data = data[:20, :40]
-                    plot_content += self._create_heatmap(sample_data)
-                    plot_content += f"[dim](Showing {min(20, data.shape[0])}×{min(40, data.shape[1])} sample)[/dim]\n"
-                else:
-                    plot_content += self._create_heatmap(data)
-            else:
-                plot_content += "[dim]Plotting only available for 1D and 2D data[/dim]\n"
+            # Type with color coding
+            type_color = self._get_type_color(node.node_type)
+            header_content += f"[{type_color}]● Type:[/{type_color}] {node.node_type.value}\n"
+            header_content += f"[dim]● Path:[/dim] [cyan]{node.path}[/cyan]\n\n"
 
-            return plot_content
+            detail_container.mount(Static(header_content))
+
+            # Metadata section
+            if node.metadata:
+                metadata_content = "[bold yellow]📊 Metadata[/bold yellow]\n"
+                metadata_content += "-" * 60 + "\n"
+                for key, val in node.metadata.items():
+                    if key == "shape":
+                        shape_str = " × ".join(str(s) for s in val)
+                        metadata_content += f"  [cyan]▸ {key}:[/cyan] {shape_str}\n"
+                    elif key == "dims":
+                        dims_str = ", ".join(str(d) for d in val)
+                        metadata_content += f"  [cyan]▸ {key}:[/cyan] ({dims_str})\n"
+                    elif key == "size":
+                        size_formatted = f"{val:,}" if isinstance(val, int) else str(val)
+                        metadata_content += f"  [cyan]▸ {key}:[/cyan] {size_formatted}\n"
+                    else:
+                        metadata_content += f"  [cyan]▸ {key}:[/cyan] {val}\n"
+                metadata_content += "\n"
+                detail_container.mount(Static(metadata_content))
+
+            # Attributes section
+            if node.attributes:
+                attr_content = "[bold magenta]🏷️  Attributes[/bold magenta]\n"
+                attr_content += "-" * 60 + "\n"
+                for key, val in node.attributes.items():
+                    val_str = str(val)
+                    if len(val_str) > 80:
+                        val_str = val_str[:77] + "..."
+                    # Escape any Rich markup in the value to prevent tag mismatch errors
+                    val_str = val_str.replace('[', '\\[').replace(']', '\\]')
+                    attr_content += f"  [magenta]:{key}[/magenta] = {val_str}\n"
+                attr_content += "\n"
+                detail_container.mount(Static(attr_content))
+
+            # Data preview for variables
+            if node.node_type == NodeType.VARIABLE and self.dataset:
+                try:
+                    self._add_data_preview(node, detail_container)
+                except Exception as e:
+                    error_msg = f"\n[red]Error loading data: {str(e)}[/red]\n"
+                    detail_container.mount(Static(error_msg))
         except Exception as e:
-            return f"[dim red]Plot error: {e}[/dim red]\n"
+            # Fallback if entire method fails
+            try:
+                detail_container = self.query_one("#detail-container", VerticalScroll)
+                detail_container.remove_children()
+                fallback_msg = f"[red]Display error[/red]\n\n{node.name}\n{node.path}\n\n{str(e)}"
+                detail_container.mount(Static(fallback_msg))
+            except:
+                pass  # Give up gracefully
 
-    def _create_line_plot(self, data: np.ndarray, height: int = 10, width: int = 50) -> str:
-        """Create a simple ASCII line plot."""
-        if data.size == 0:
-            return ""
-
-        # Normalize data to plot height
-        data_min, data_max = np.nanmin(data), np.nanmax(data)
-        if data_max == data_min:
-            data_norm = np.zeros_like(data, dtype=int)
+    def _add_data_preview(self, node: DataNode, container: VerticalScroll) -> None:
+        """Add data preview widgets to the container."""
+        # Extract variable path
+        var_path = node.path
+        if "/variables/" in var_path:
+            var_name = var_path.split("/variables/")[1]
+        elif "/coordinates/" in var_path:
+            var_name = var_path.split("/coordinates/")[1]
         else:
-            data_norm = ((data - data_min) / (data_max - data_min) * (height - 1)).astype(int)
+            var_name = node.name
 
-        # Sample data if too wide
-        if len(data) > width:
-            indices = np.linspace(0, len(data) - 1, width).astype(int)
-            data_norm = data_norm[indices]
+        # Load data
+        data = None
+        ds = None
+        try:
+            ds = xr.open_dataset(self.dataset.file_path)
+            if var_name in ds.variables:
+                var = ds[var_name]
+                data = var.values
+                ds.close()
+        except Exception:
+            if ds:
+                ds.close()
 
-        plot = ""
-        for row in range(height - 1, -1, -1):
-            line = ""
-            for val in data_norm:
-                if val == row:
-                    line += "●"
-                elif val > row:
-                    line += "│"
+        # Try netCDF4 if xarray failed
+        if data is None:
+            import netCDF4 as nc
+            with nc.Dataset(self.dataset.file_path, 'r') as ncds:
+                parts = [p for p in var_path.split('/') if p]
+                obj = ncds
+                for i, part in enumerate(parts[:-1]):
+                    if part in obj.groups:
+                        obj = obj.groups[part]
+                    elif part in obj.variables:
+                        obj = obj.variables[part]
+                        break
+
+                var_name_final = parts[-1]
+                if hasattr(obj, 'variables') and var_name_final in obj.variables:
+                    var = obj.variables[var_name_final]
+                elif hasattr(obj, '__getitem__'):
+                    var = obj[var_name_final]
                 else:
-                    line += " "
-            # Add axis labels
-            y_val = data_min + (data_max - data_min) * row / (height - 1)
-            plot += f"{y_val:8.2g} │{line}\n"
+                    raise KeyError(f"Cannot find variable at path: {var_path}")
 
-        plot += " " * 9 + "└" + "─" * len(data_norm) + "\n"
-        return plot
+                data = var[:]
 
-    def _create_histogram(self, data: np.ndarray, bins: int = 20, height: int = 10) -> str:
-        """Create an ASCII histogram."""
-        hist, bin_edges = np.histogram(data, bins=bins)
-        max_count = hist.max()
+        # Add data preview header
+        container.mount(Static("\n[bold green]📈 Data Preview[/bold green]\n" + "-" * 60))
 
-        if max_count == 0:
-            return "[dim]No data to plot[/dim]\n"
+        # Add Textual visualization widgets if plot mode is on
+        if self.show_plot and np.issubdtype(data.dtype, np.number) and data.size > 0:
+            container.mount(Static(" "))  # Spacer (needs non-empty content)
+            for widget in DataVisualizer.create_visualization(data, container_width=50):
+                container.mount(widget)
+            container.mount(Static(" "))  # Spacer (needs non-empty content)
 
-        plot = ""
-        for row in range(height, 0, -1):
-            threshold = max_count * row / height
-            line = ""
-            for count in hist:
-                if count >= threshold:
-                    line += "█"
-                elif count >= threshold * 0.5:
-                    line += "▄"
-                else:
-                    line += " "
-            plot += f"{int(threshold):6d} │{line}\n"
+        # Add statistics for numeric data
+        if np.issubdtype(data.dtype, np.number):
+            stats_content = format_statistics(data)
+            if stats_content and stats_content.strip():
+                container.mount(Static(stats_content))
 
-        plot += " " * 7 + "└" + "─" * len(hist) + "\n"
-        plot += f"       Range: [{data.min():.3g}, {data.max():.3g}]\n"
-        return plot
-
-    def _create_heatmap(self, data: np.ndarray) -> str:
-        """Create an ASCII heatmap for 2D data."""
-        # Normalize to 0-9 range for characters
-        data_min, data_max = np.nanmin(data), np.nanmax(data)
-        if data_max == data_min:
-            data_norm = np.zeros_like(data, dtype=int)
+        # Add sample values
+        container.mount(Static("[cyan]Sample Values:[/cyan]"))
+        sample_content = format_sample_values(data, max_lines=8)
+        if sample_content and sample_content.strip():
+            container.mount(Static(sample_content))
         else:
-            data_norm = ((data - data_min) / (data_max - data_min) * 9).astype(int)
-
-        # Characters from dark to light
-        chars = " .:-=+*#%@"
-
-        plot = ""
-        for row in data_norm:
-            line = "".join(chars[min(val, 9)] for val in row)
-            plot += f"{line}\n"
-
-        plot += f"Range: [{data_min:.3g}, {data_max:.3g}]\n"
-        return plot
+            container.mount(Static("[dim]No sample data available[/dim]"))
 
     def _get_node_icon(self, node: DataNode) -> str:
-        """Get icon for node type."""
+        """Get icon for node type (for detail panel only)."""
         icons = {
-            NodeType.ROOT: "🏠",
-            NodeType.GROUP: "📂",
-            NodeType.VARIABLE: "🌡️",
-            NodeType.DIMENSION: "📏",
-            NodeType.ATTRIBUTE: "🏷️",
+            NodeType.ROOT: "🏠 ",
+            NodeType.GROUP: "📂 ",
+            NodeType.VARIABLE: "🌡️ ",
+            NodeType.DIMENSION: "📏 ",
+            NodeType.ATTRIBUTE: "🏷️ ",
         }
-        return icons.get(node.node_type, "●")
+        return icons.get(node.node_type, "● ")
 
     def _get_type_color(self, node_type: NodeType) -> str:
         """Get color for node type."""
@@ -442,138 +450,6 @@ class TanotlyApp(App[None]):
         }
         return colors.get(node_type, "white")
 
-    def _get_data_preview(self, node: DataNode) -> str:
-        """Get data preview for a variable."""
-        try:
-            # Extract variable path - handle grouped NetCDF4/HDF5 files
-            var_path = node.path
-
-            # For xarray-style paths
-            if "/variables/" in var_path:
-                var_name = var_path.split("/variables/")[1]
-            elif "/coordinates/" in var_path:
-                var_name = var_path.split("/coordinates/")[1]
-            else:
-                var_name = node.name
-
-            # Try xarray first - it works for simple files
-            data = None
-            ds = None
-            try:
-                ds = xr.open_dataset(self.dataset.file_path)
-                if var_name in ds.variables:
-                    var = ds[var_name]
-                    data = var.values
-                    ds.close()
-            except Exception:
-                if ds:
-                    ds.close()
-
-            # If xarray didn't work, try netCDF4 with full path
-            if data is None:
-                import netCDF4 as nc
-                with nc.Dataset(self.dataset.file_path, 'r') as ncds:
-                    # Navigate through groups to find the variable
-                    # Parse the path like /data/navigation/mws_lat
-                    parts = [p for p in var_path.split('/') if p]
-
-                    # Navigate to the right group
-                    obj = ncds
-                    for i, part in enumerate(parts[:-1]):  # All but the last part are groups
-                        if part in obj.groups:
-                            obj = obj.groups[part]
-                        elif part in obj.variables:
-                            # It's a variable, not a group - use it directly
-                            obj = obj.variables[part]
-                            break
-
-                    # Get the variable (last part of path)
-                    var_name_final = parts[-1]
-                    if hasattr(obj, 'variables') and var_name_final in obj.variables:
-                        var = obj.variables[var_name_final]
-                    elif hasattr(obj, '__getitem__'):
-                        var = obj[var_name_final]
-                    else:
-                        raise KeyError(f"Cannot find variable at path: {var_path}")
-
-                    data = var[:]
-
-            content = "[bold green]📈 Data Preview[/bold green]\n"
-            content += "─" * 60 + "\n"
-
-            # Add ASCII plot if enabled and data is numeric
-            if self.show_plot and np.issubdtype(data.dtype, np.number) and data.size > 0:
-                content += self._create_ascii_plot(data)
-                content += "\n"
-
-            # Statistics for numeric data
-            if np.issubdtype(data.dtype, np.number):
-                # Count valid values
-                valid_count = np.count_nonzero(~np.isnan(data)) if data.dtype.kind == 'f' else data.size
-                nan_count = data.size - valid_count
-
-                content += "[cyan]Statistics:[/cyan]\n"
-                content += f"  [dim]▸ Min:[/dim]  {np.nanmin(data):.6g}\n"
-                content += f"  [dim]▸ Max:[/dim]  {np.nanmax(data):.6g}\n"
-                content += f"  [dim]▸ Mean:[/dim] {np.nanmean(data):.6g}\n"
-                if data.size > 1:
-                    content += f"  [dim]▸ Std:[/dim]  {np.nanstd(data):.6g}\n"
-                if nan_count > 0:
-                    content += f"  [dim]▸ NaN:[/dim]  {nan_count:,} ({nan_count/data.size*100:.1f}%)\n"
-                content += f"  [dim]▸ Valid:[/dim] {valid_count:,}\n"
-                content += "\n"
-
-            # Sample values with better formatting
-            content += "[cyan]Sample Values:[/cyan]\n"
-            if data.size == 0:
-                content += "  [dim](empty array)[/dim]\n"
-            elif data.size <= 10:
-                # Show all values for small arrays
-                if data.ndim == 1:
-                    for i, val in enumerate(data):
-                        content += f"  [{i}] {val}\n"
-                else:
-                    content += f"  {data}\n"
-            elif data.ndim == 1:
-                # Show first and last 5 for 1D arrays
-                content += "  [dim]First 5:[/dim]\n"
-                for i in range(min(5, data.size)):
-                    content += f"    [{i}] {data[i]}\n"
-                if data.size > 10:
-                    content += f"  [dim]  ... ({data.size - 10} more) ...[/dim]\n"
-                    content += "  [dim]Last 5:[/dim]\n"
-                    for i in range(data.size - 5, data.size):
-                        content += f"    [{i}] {data[i]}\n"
-                else:
-                    content += "  [dim]Last 5:[/dim]\n"
-                    for i in range(5, data.size):
-                        content += f"    [{i}] {data[i]}\n"
-            elif data.ndim == 2:
-                # Show corner of 2D arrays
-                rows, cols = data.shape
-                show_rows = min(5, rows)
-                show_cols = min(10, cols)
-                content += f"  [dim]First {show_rows}×{show_cols} corner:[/dim]\n"
-                for i in range(show_rows):
-                    row_str = "  " + " ".join(f"{data[i, j]:8.3g}" for j in range(show_cols))
-                    if cols > show_cols:
-                        row_str += " ..."
-                    content += row_str + "\n"
-                if rows > show_rows:
-                    content += "  [dim]...[/dim]\n"
-                content += f"  [dim](Full shape: {rows:,} × {cols:,})[/dim]\n"
-            else:
-                # Multi-dimensional arrays
-                content += f"  [dim]First 10 values (flattened):[/dim]\n"
-                for i in range(min(10, data.size)):
-                    content += f"    {data.flat[i]}\n"
-                shape_str = " × ".join(f"{s:,}" for s in data.shape)
-                content += f"  [dim](Shape: {shape_str}, Total: {data.size:,})[/dim]\n"
-
-            return content
-
-        except Exception as e:
-            return f"[dim red]Could not load data: {e}[/dim red]\n"
 
     def _collect_all_tree_nodes(self, tree_node, result_list):
         """Recursively collect all tree nodes."""
@@ -725,6 +601,75 @@ class TanotlyApp(App[None]):
             self._update_status("Plot view: OFF")
             # Refresh to show normal view
             self.show_details(self.current_node)
+
+    def action_copy_tree(self) -> None:
+        """Copy the entire tree structure as text."""
+        if not self.dataset:
+            self._update_status("No file loaded")
+            return
+
+        try:
+            tree = self.query_one("#tree", Tree)
+
+            # Build tree text representation
+            content = f"Tree Structure: {self.dataset.file_path}\n"
+            content += "=" * 80 + "\n\n"
+
+            def format_tree_node(tree_node, prefix="", is_last=True):
+                """Recursively format tree nodes as text."""
+                result = ""
+                if tree_node.data:
+                    # Get connector
+                    connector = "└── " if is_last else "├── "
+                    # Strip markup from label for plain text
+                    import re
+                    label = tree_node.label
+                    if hasattr(label, 'plain'):
+                        label_text = label.plain
+                    else:
+                        # Remove Rich markup
+                        label_text = re.sub(r'\[.*?\]', '', str(label))
+
+                    result += prefix + connector + label_text + "\n"
+
+                    # Process children
+                    if tree_node.children:
+                        extension = "    " if is_last else "│   "
+                        for i, child in enumerate(tree_node.children):
+                            is_child_last = (i == len(tree_node.children) - 1)
+                            result += format_tree_node(child, prefix + extension, is_child_last)
+                else:
+                    # Root node children
+                    for i, child in enumerate(tree_node.children):
+                        is_child_last = (i == len(tree_node.children) - 1)
+                        result += format_tree_node(child, "", is_child_last)
+
+                return result
+
+            content += format_tree_node(tree.root)
+
+            # Try to copy to clipboard
+            import subprocess
+            try:
+                subprocess.run(['xclip', '-selection', 'clipboard'],
+                             input=content.encode(), check=True)
+                self._update_status("Tree structure copied to clipboard!")
+            except (FileNotFoundError, subprocess.CalledProcessError):
+                try:
+                    subprocess.run(['pbcopy'], input=content.encode(), check=True)
+                    self._update_status("Tree structure copied to clipboard!")
+                except (FileNotFoundError, subprocess.CalledProcessError):
+                    try:
+                        subprocess.run(['clip'], input=content.encode(), check=True)
+                        self._update_status("Tree structure copied to clipboard!")
+                    except (FileNotFoundError, subprocess.CalledProcessError):
+                        # Fallback: save to temp file
+                        import tempfile
+                        with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='_tree.txt') as f:
+                            f.write(content)
+                            self._update_status(f"Tree saved to {f.name}")
+        except Exception as e:
+            self._update_status(f"Copy tree failed: {e}")
 
     def action_copy_info(self) -> None:
         """Copy current node information to clipboard."""
