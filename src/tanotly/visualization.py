@@ -20,6 +20,11 @@ class DataPlot1D(PlotextPlot):
 
     def on_mount(self) -> None:
         """Initialize plot settings when mounted."""
+        # Configure plot appearance
+        self.plt.canvas_color("black")
+        self.plt.axes_color("white")
+        self.plt.ticks_color("white")
+
         self.plt.title("1D Data Plot")
         self.plt.xlabel("Index")
         self.plt.ylabel("Value")
@@ -36,8 +41,11 @@ class DataPlot1D(PlotextPlot):
         x = list(range(len(self._data)))
         y = [float(v) if not np.isnan(v) else 0.0 for v in self._data]
 
-        # Plot the data
-        self.plt.plot(x, y, marker="braille")
+        # Plot the data with cyan color
+        self.plt.plot(x, y, marker="braille", color="cyan")
+
+        # Show axis values
+        self.plt.show()
         self.refresh()
 
 
@@ -51,6 +59,11 @@ class DataPlot2D(PlotextPlot):
 
     def on_mount(self) -> None:
         """Initialize plot settings when mounted."""
+        # Configure plot appearance
+        self.plt.canvas_color("black")
+        self.plt.axes_color("white")
+        self.plt.ticks_color("white")
+
         self.plt.title("2D Heatmap")
         self.replot()
 
@@ -69,8 +82,11 @@ class DataPlot2D(PlotextPlot):
             index=[""] * rows     # Empty labels
         )
 
-        # Plot heatmap
+        # Plot heatmap (plotext uses its own default colormap)
         self.plt.heatmap(df)
+
+        # Show with axis values
+        self.plt.show()
         self.refresh()
 
 
