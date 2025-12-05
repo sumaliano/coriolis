@@ -7,6 +7,7 @@ from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical, VerticalScroll, Container
 from textual.widgets import Footer, Header, Input, Static, Tree
+from textual.widget import Widget
 
 import numpy as np
 import xarray as xr
@@ -23,11 +24,12 @@ class TanotlyApp(App[None]):
     ENABLE_COMMAND_PALETTE = False
 
     CSS = """
-    /* Top status bar - accent color (cyan by default) */
+    /* Top status bar - better contrast with dark background */
     #top-bar {
         dock: top;
         height: 1;
-        background: $accent;
+        background: $primary;
+        color: $text;
         content-align: center middle;
     }
 
@@ -36,20 +38,35 @@ class TanotlyApp(App[None]):
         height: 1fr;
     }
 
-    /* Tree panel - left side (40%) */
+    /* Tree panel - left side (configurable width) */
     #tree-container {
         width: 40%;
         border-right: solid $accent;
     }
 
-    /* Detail panel - right side (60%) */
+    #tree-container.hidden {
+        display: none;
+    }
+
+    /* Detail panel - right side (fills remaining space) */
     #detail-container {
         width: 60%;
         padding: 1;
     }
 
+    #detail-container.full-width {
+        width: 100%;
+    }
+
     Tree {
         height: 100%;
+        scrollbar-gutter: stable;
+    }
+
+    /* Wrap tree labels that don't fit */
+    Tree > .tree--label {
+        text-overflow: ellipsis;
+        overflow: hidden;
     }
 
     /* Hide guide for leaf nodes (no children) */
@@ -66,17 +83,21 @@ class TanotlyApp(App[None]):
         scrollbar-gutter: stable;
     }
 
-    /* Search input - docked at bottom, hidden by default */
+    /* Search input - docked at bottom */
     #search-input {
         dock: bottom;
-        display: none;
-        border: tall $accent;
-        background: $surface;
+        height: 1;
+        border: none;
+        background: $primary;
         color: $text;
     }
 
+    #search-input.hidden {
+        display: none;
+    }
+
     #search-input:focus {
-        border: tall $success;
+        background: $primary;
     }
 
     /* Color scheme reference:
@@ -96,7 +117,7 @@ class TanotlyApp(App[None]):
         Binding("/", "start_search", "Search"),
         Binding("n", "next_match", "Next", show=False),
         Binding("N", "prev_match", "Prev", show=False),
-        Binding("escape", "clear_search", "Clear"),
+        Binding("escape", "cancel_search", "Cancel"),
         Binding("j", "cursor_down", "Down", show=False),
         Binding("k", "cursor_up", "Up", show=False),
         Binding("h", "cursor_left", "Left", show=False),
@@ -104,6 +125,7 @@ class TanotlyApp(App[None]):
         Binding("p", "toggle_plot", "Plot"),
         Binding("y", "copy_info", "Copy Info", show=False),
         Binding("c", "copy_tree", "Copy Tree"),
+        Binding("t", "toggle_preview", "Toggle Preview"),
     ]
 
     def __init__(self, file_path: Optional[str] = None):
@@ -117,11 +139,14 @@ class TanotlyApp(App[None]):
         self.search_query = ""
         self.search_matches = []
         self.current_match_idx = -1
+        self.search_mode = False
         # Plot mode
         self.show_plot = False
         self.current_node: Optional[DataNode] = None
         # Debounce timer for navigation
         self._debounce_timer = None
+        # Preview toggle
+        self.show_preview = True
 
     def compose(self) -> ComposeResult:
         yield Header(show_clock=True)
@@ -140,8 +165,10 @@ class TanotlyApp(App[None]):
                     id="welcome"
                 )
 
-        # Search input (hidden by default)
-        yield Input(placeholder="Search...", id="search-input")
+        # Search input at bottom (initially hidden)
+        search_input = Input(placeholder="Type to search, Enter to find matches, Esc to cancel", id="search-input")
+        search_input.add_class("hidden")
+        yield search_input
         yield Footer()
 
     def on_mount(self) -> None:
@@ -462,31 +489,37 @@ class TanotlyApp(App[None]):
         if not self.full_dataset_info:
             return
 
+        self.search_mode = True
         # Show and focus the search input
         search_input = self.query_one("#search-input", Input)
-        search_input.styles.display = "block"
+        search_input.remove_class("hidden")
         search_input.value = ""
         search_input.focus()
-        self._update_status("Type to search, Enter to find, Esc to cancel")
+        self._update_status("🔍 Search Mode | Type query and press Enter")
 
     def on_input_submitted(self, event: Input.Submitted) -> None:
-        """Handle search query submission."""
+        """Handle search query submission - Enter key initiates search."""
         if event.input.id == "search-input":
-            self.search_query = event.value
+            self.search_query = event.value.strip()
             if self.search_query:
                 self._perform_search()
-            # Keep input visible if there are matches
-            if not self.search_matches:
-                event.input.styles.display = "none"
+                # Return focus to tree after search
                 tree = self.query_one("#tree", Tree)
                 tree.focus()
+            else:
+                self.action_cancel_search()
 
     def _perform_search(self):
-        """Find all matches for current search query."""
+        """Find all matches for current search query in the entire tree."""
         if not self.search_query:
             return
 
         tree = self.query_one("#tree", Tree)
+
+        # First, expand ALL nodes to make everything searchable
+        self._expand_all_nodes(tree.root)
+
+        # Now collect all nodes (including newly expanded ones)
         all_nodes = []
         self._collect_all_tree_nodes(tree.root, all_nodes)
 
@@ -495,22 +528,45 @@ class TanotlyApp(App[None]):
 
         for tree_node in all_nodes:
             if tree_node.data:
-                # Search in node name and attributes
+                # Search in node name
                 if query_lower in tree_node.data.name.lower():
                     self.search_matches.append(tree_node)
-                elif tree_node.data.attributes:
+                    continue
+
+                # Search in node path
+                if query_lower in tree_node.data.path.lower():
+                    self.search_matches.append(tree_node)
+                    continue
+
+                # Search in attributes
+                if tree_node.data.attributes:
                     for key, val in tree_node.data.attributes.items():
                         if query_lower in key.lower() or query_lower in str(val).lower():
+                            self.search_matches.append(tree_node)
+                            break
+
+                # Search in metadata
+                if tree_node.data.metadata:
+                    for key, val in tree_node.data.metadata.items():
+                        if query_lower in str(key).lower() or query_lower in str(val).lower():
                             self.search_matches.append(tree_node)
                             break
 
         if self.search_matches:
             self.current_match_idx = 0
             self._jump_to_current_match()
-            self._update_status(f"Search: '{self.search_query}' | {len(self.search_matches)} matches | n/N to navigate")
+            search_input = self.query_one("#search-input", Input)
+            search_input.value = f"'{self.search_query}' | {len(self.search_matches)} matches | n/N to navigate | Esc to exit"
         else:
             self.current_match_idx = -1
-            self._update_status(f"No matches for '{self.search_query}' | Press ESC to clear")
+            search_input = self.query_one("#search-input", Input)
+            search_input.value = f"No matches for '{self.search_query}' | Esc to exit"
+
+    def _expand_all_nodes(self, tree_node):
+        """Recursively expand all nodes in the tree."""
+        tree_node.expand()
+        for child in tree_node.children:
+            self._expand_all_nodes(child)
 
     def _jump_to_current_match(self):
         """Jump to the current match in the search results."""
@@ -518,7 +574,7 @@ class TanotlyApp(App[None]):
             tree = self.query_one("#tree", Tree)
             match_node = self.search_matches[self.current_match_idx]
 
-            # Expand all parent nodes to make the match visible
+            # Expand all parent nodes to make the match visible (they should already be expanded)
             parent = match_node.parent
             while parent is not None:
                 parent.expand()
@@ -526,9 +582,10 @@ class TanotlyApp(App[None]):
 
             tree.select_node(match_node)
             tree.scroll_to_node(match_node)
-            self._update_status(
-                f"Match {self.current_match_idx + 1}/{len(self.search_matches)}: '{self.search_query}' | n/N to navigate | ESC to clear"
-            )
+
+            # Update the search input to show current match
+            search_input = self.query_one("#search-input", Input)
+            search_input.value = f"Match {self.current_match_idx + 1}/{len(self.search_matches)}: '{self.search_query}' | n/N | Esc to exit"
 
     def action_next_match(self) -> None:
         """Jump to next search match."""
@@ -544,22 +601,24 @@ class TanotlyApp(App[None]):
         self.current_match_idx = (self.current_match_idx - 1) % len(self.search_matches)
         self._jump_to_current_match()
 
-    def action_clear_search(self) -> None:
-        """Clear search results."""
+    def action_cancel_search(self) -> None:
+        """Cancel/exit search mode."""
+        self.search_mode = False
         self.search_query = ""
         self.search_matches = []
         self.current_match_idx = -1
 
         # Hide search input
         search_input = self.query_one("#search-input", Input)
-        search_input.styles.display = "none"
+        search_input.add_class("hidden")
+        search_input.value = ""
 
         # Return focus to tree
         tree = self.query_one("#tree", Tree)
         tree.focus()
 
         if self.file_path:
-            self._update_status(f"{Path(self.file_path).name} | Use / to search")
+            self._update_status(f"{Path(self.file_path).name} | Press / to search")
         else:
             self._update_status("")
 
@@ -601,6 +660,24 @@ class TanotlyApp(App[None]):
             self._update_status("Plot view: OFF")
             # Refresh to show normal view
             self.show_details(self.current_node)
+
+    def action_toggle_preview(self) -> None:
+        """Toggle preview pane visibility."""
+        self.show_preview = not self.show_preview
+        detail_container = self.query_one("#detail-container", VerticalScroll)
+        tree_container = self.query_one("#tree-container", Vertical)
+
+        if self.show_preview:
+            # Show preview pane
+            detail_container.remove_class("hidden")
+            tree_container.styles.width = "40%"
+            detail_container.styles.width = "60%"
+            self._update_status("Preview pane: ON")
+        else:
+            # Hide preview pane, expand tree to full width
+            tree_container.styles.width = "100%"
+            detail_container.styles.width = "0"
+            self._update_status("Preview pane: OFF (tree full width)")
 
     def action_copy_tree(self) -> None:
         """Copy the entire tree structure as text."""
