@@ -1,6 +1,7 @@
 """Data visualization widgets using textual-plotext."""
 
 import numpy as np
+import pandas as pd
 from textual.widgets import Static
 from textual.app import ComposeResult
 from textual_plotext import PlotextPlot
@@ -9,37 +10,68 @@ from typing import Optional
 
 
 class DataPlot1D(PlotextPlot):
-    """Custom 1D plot widget that initializes on mount."""
+    """Widget for plotting 1D data."""
 
     def __init__(self, data: np.ndarray, **kwargs):
         super().__init__(**kwargs)
-        self.plot_data = data
+        # Clean NaN values before storing
+        clean_data = data[~np.isnan(data)] if np.issubdtype(data.dtype, np.floating) else data
+        self._data = clean_data if len(clean_data) > 0 else data[:10]
 
     def on_mount(self) -> None:
-        """Initialize the plot with data when mounted."""
-        plt = self.plt
-        plt.clear_figure()
-        plt.plot(self.plot_data.tolist())
-        plt.title("1D Data Plot")
-        plt.xlabel("Index")
-        plt.ylabel("Value")
-        plt.theme('pro')
+        """Initialize plot settings when mounted."""
+        self.plt.title("1D Data Plot")
+        self.plt.xlabel("Index")
+        self.plt.ylabel("Value")
+        self.replot()
+
+    def replot(self) -> None:
+        """Plot the data."""
+        self.plt.clear_data()
+
+        # Set plot size (width, height in characters)
+        self.plt.plotsize(None, 20)  # Auto width, 20 lines height
+
+        # Create x-axis indices
+        x = list(range(len(self._data)))
+        y = [float(v) if not np.isnan(v) else 0.0 for v in self._data]
+
+        # Plot the data
+        self.plt.plot(x, y, marker="braille")
+        self.refresh()
 
 
 class DataPlot2D(PlotextPlot):
-    """Custom 2D heatmap widget that initializes on mount."""
+    """Widget for plotting 2D heatmaps."""
 
     def __init__(self, data: np.ndarray, **kwargs):
         super().__init__(**kwargs)
-        self.plot_data = data
+        # Replace NaN with 0 for plotting
+        self._data = np.nan_to_num(data, nan=0.0)
 
     def on_mount(self) -> None:
-        """Initialize the heatmap with data when mounted."""
-        plt = self.plt
-        plt.clear_figure()
-        plt.heatmap(self.plot_data.tolist())
-        plt.title("2D Heatmap")
-        plt.theme('pro')
+        """Initialize plot settings when mounted."""
+        self.plt.title("2D Heatmap")
+        self.replot()
+
+    def replot(self) -> None:
+        """Plot the heatmap."""
+        self.plt.clear_data()
+
+        # Set plot size (width, height in characters)
+        self.plt.plotsize(None, 25)  # Auto width, 25 lines height
+
+        # Create DataFrame with empty string labels to minimize label space
+        rows, cols = self._data.shape
+        df = pd.DataFrame(
+            self._data,
+            columns=[""] * cols,  # Empty labels
+            index=[""] * rows     # Empty labels
+        )
+
+        # Plot heatmap
+        self.plt.heatmap(df)
+        self.refresh()
 
 
 class DataVisualizer:
@@ -98,12 +130,12 @@ class DataVisualizer:
 
     @staticmethod
     def _create_heatmap(data: np.ndarray) -> ComposeResult:
-        """Create a heatmap widget for 2D data using plotext."""
+        """Create a heatmap widget for 2D data using plotext with downsampling."""
         rows, cols = data.shape
 
-        # Downsample intelligently to show full range
-        max_display_rows = 50
-        max_display_cols = 100
+        # Downsample BEFORE creating widget to save resources
+        max_display_rows = 30  # Smaller for performance
+        max_display_cols = 50
 
         if rows > max_display_rows or cols > max_display_cols:
             # Calculate steps to cover full range
@@ -111,8 +143,8 @@ class DataVisualizer:
             col_step = max(1, cols // max_display_cols)
 
             # Use block averaging to preserve features across entire array
-            sampled_rows = (rows + row_step - 1) // row_step
-            sampled_cols = (cols + col_step - 1) // col_step
+            sampled_rows = min(max_display_rows, (rows + row_step - 1) // row_step)
+            sampled_cols = min(max_display_cols, (cols + col_step - 1) // col_step)
             sampled_data = np.zeros((sampled_rows, sampled_cols))
 
             for i in range(sampled_rows):
@@ -125,16 +157,17 @@ class DataVisualizer:
                     block = data[row_start:row_end, col_start:col_end]
                     sampled_data[i, j] = np.nanmean(block)
 
-            info_text = f"[dim](Downsampled {sampled_rows}×{sampled_cols} from full {rows}×{cols})[/dim]"
+            info_text = f"[dim](Downsampled {sampled_rows}×{sampled_cols} from {rows}×{cols})[/dim]"
         else:
             sampled_data = data
-            info_text = f"[dim](Full {rows}×{cols})[/dim]"
+            info_text = f"[dim]({rows}×{cols})[/dim]"
 
         yield Static(f"[bold cyan]📊 2D Heatmap[/bold cyan] {info_text}")
+        # Pass downsampled data to widget
         yield DataPlot2D(sampled_data)
 
         # Add range info
-        data_min, data_max = np.nanmin(data), np.nanmax(data)
+        data_min, data_max = np.nanmin(sampled_data), np.nanmax(sampled_data)
         range_text = f"Range: [{data_min:.4g}, {data_max:.4g}]"
         yield Static(f"[dim]{range_text}[/dim]")
 

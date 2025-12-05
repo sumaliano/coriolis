@@ -26,6 +26,8 @@ classifiers = [
 ]
 dependencies = [
     "textual>=0.47.0",
+    "textual-plotext>=1.0.0",
+    "pandas>=2.0.0",
     "xarray>=2023.1.0",
     "netcdf4>=1.6.0",
     "h5py>=3.8.0",

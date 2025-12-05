@@ -5,9 +5,8 @@ from typing import Optional
 
 from textual.app import App, ComposeResult
 from textual.binding import Binding
-from textual.containers import Horizontal, Vertical, VerticalScroll, Container
-from textual.widgets import Footer, Header, Input, Static, Tree
-from textual.widget import Widget
+from textual.containers import Horizontal, Vertical, VerticalScroll
+from textual.widgets import Footer, Input, Static, Tree
 
 import numpy as np
 import xarray as xr
@@ -24,34 +23,102 @@ class TanotlyApp(App[None]):
     ENABLE_COMMAND_PALETTE = False
 
     CSS = """
-    /* Top status bar - better contrast with dark background */
-    #top-bar {
-        dock: top;
-        height: 1;
-        background: $primary;
-        color: $text;
-        content-align: center middle;
-    }
+    /* ============================================================================
+     * COLOR CUSTOMIZATION GUIDE
+     * ============================================================================
+     *
+     * Textual provides built-in color variables that automatically adapt to
+     * light/dark themes. You can customize the app's appearance by changing
+     * colors in the CSS rules below.
+     *
+     * AVAILABLE COLOR VARIABLES (Textual Built-in):
+     * ------------------------------------------------
+     * $accent           - Cyan (default) - highlights, borders, links
+     * $accent-lighten-1 - Lighter cyan variant
+     * $accent-lighten-2 - Even lighter cyan
+     * $accent-lighten-3 - Lightest cyan
+     * $accent-darken-1  - Darker cyan variant
+     * $accent-darken-2  - Even darker cyan
+     * $accent-darken-3  - Darkest cyan
+     *
+     * $primary          - Primary brand color
+     * $secondary        - Secondary color
+     * $background       - Main background color
+     * $surface          - Widget background color
+     * $panel            - Panel background color (slightly different from surface)
+     *
+     * $success          - Green - success states, positive actions
+     * $warning          - Yellow - warnings, caution states
+     * $error            - Red - errors, destructive actions
+     *
+     * $text             - Default text color (auto: white on dark, black on light)
+     * $text-muted       - Dimmed text color
+     * $text-disabled    - Disabled text color
+     *
+     * LITERAL COLOR VALUES (can be used anywhere):
+     * ------------------------------------------------
+     * Named colors: black, white, red, green, blue, yellow, magenta, cyan
+     * Hex colors:   #000000, #ffffff, #ff0000, etc.
+     * RGB colors:   rgb(255, 0, 0), rgb(0, 255, 0), etc.
+     *
+     * RICH MARKUP COLORS (used in text content, not CSS):
+     * ------------------------------------------------
+     * Used in Static widget content and labels with [color]text[/color] syntax:
+     * black, red, green, yellow, blue, magenta, cyan, white
+     * bright_black, bright_red, bright_green, bright_yellow,
+     * bright_blue, bright_magenta, bright_cyan, bright_white
+     *
+     * Examples: [cyan]Variable[/cyan], [bold yellow]Title[/bold yellow]
+     *
+     * WHERE TO CUSTOMIZE:
+     * ------------------------------------------------
+     * 1. Background colors: Change 'background: black' to any color
+     * 2. Border colors: Change 'border-right: solid $accent' to use different color
+     * 3. Text colors: Change 'color: $text' to use different color
+     * 4. Tree/node colors: See _format_label() method for Rich markup colors
+     * 5. Status bar: Change #status-bar background and color below
+     *
+     * ============================================================================
+     */
 
-    /* Main content area */
+    /* Main content area - fills space between top and status bar */
     #main {
         height: 1fr;
     }
 
-    /* Tree panel - left side (configurable width) */
+    /* Status bar - positioned above footer, not docked
+     * CUSTOMIZE: Change 'background' to modify status bar background color
+     * CUSTOMIZE: Change 'color' to modify status bar text color
+     */
+    #status-bar {
+        height: 1;
+        background: $panel;     /* Try: $surface, black, #1a1a1a, etc. */
+        color: $text;           /* Try: white, $accent, yellow, etc. */
+        content-align: left middle;
+        padding-left: 1;
+    }
+
+    /* Tree panel - left side (configurable width)
+     * CUSTOMIZE: Change 'background' to modify tree panel background
+     * CUSTOMIZE: Change 'border-right' color to modify border color
+     */
     #tree-container {
-        width: 40%;
-        border-right: solid $accent;
+        width: 50%;
+        border-right: solid $accent;  /* Try: solid green, solid #00ff00, etc. */
+        background: black;            /* Try: $background, $surface, #0a0a0a, etc. */
     }
 
     #tree-container.hidden {
         display: none;
     }
 
-    /* Detail panel - right side (fills remaining space) */
+    /* Detail panel - right side (fills remaining space)
+     * CUSTOMIZE: Change 'background' to modify detail panel background
+     */
     #detail-container {
-        width: 60%;
+        width: 50%;
         padding: 1;
+        background: black;  /* Try: $background, $surface, #0a0a0a, etc. */
     }
 
     #detail-container.full-width {
@@ -61,6 +128,7 @@ class TanotlyApp(App[None]):
     Tree {
         height: 100%;
         scrollbar-gutter: stable;
+        background: black;
     }
 
     /* Wrap tree labels that don't fit */
@@ -83,22 +151,13 @@ class TanotlyApp(App[None]):
         scrollbar-gutter: stable;
     }
 
-    /* Search input - docked at bottom */
-    #search-input {
-        dock: bottom;
-        height: 1;
-        border: none;
-        background: $primary;
-        color: $text;
+    /* Plot widgets - ensure they have proper height */
+    DataPlot1D, DataPlot2D {
+        height: auto;
+        min-height: 20;
+        width: 100%;
     }
 
-    #search-input.hidden {
-        display: none;
-    }
-
-    #search-input:focus {
-        background: $primary;
-    }
 
     /* Color scheme reference:
      * $accent - cyan (default) - used for highlights, borders
@@ -126,6 +185,10 @@ class TanotlyApp(App[None]):
         Binding("y", "copy_info", "Copy Info", show=False),
         Binding("c", "copy_tree", "Copy Tree"),
         Binding("t", "toggle_preview", "Toggle Preview"),
+        Binding("ctrl+d", "scroll_preview_down", "Scroll Down", show=False),
+        Binding("ctrl+u", "scroll_preview_up", "Scroll Up", show=False),
+        Binding("shift+j", "scroll_preview_down", "Scroll Down", show=False),
+        Binding("shift+k", "scroll_preview_up", "Scroll Up", show=False),
     ]
 
     def __init__(self, file_path: Optional[str] = None):
@@ -139,7 +202,7 @@ class TanotlyApp(App[None]):
         self.search_query = ""
         self.search_matches = []
         self.current_match_idx = -1
-        self.search_mode = False
+        self.search_buffer = ""  # What user is typing
         # Plot mode
         self.show_plot = False
         self.current_node: Optional[DataNode] = None
@@ -149,9 +212,7 @@ class TanotlyApp(App[None]):
         self.show_preview = True
 
     def compose(self) -> ComposeResult:
-        yield Header(show_clock=True)
-        yield Static("", id="top-bar")
-
+        # Main content area
         with Horizontal(id="main"):
             with Vertical(id="tree-container"):
                 yield Tree("Data", id="tree")
@@ -159,16 +220,17 @@ class TanotlyApp(App[None]):
                 yield Static(
                     "[bold yellow]Welcome to Tanotly![/bold yellow]\n\n"
                     "[dim]Navigation: ↑/↓/j/k, ←/→/h/l to expand\n"
-                    "Search: / then type, n/N for next/prev\n"
+                    "Search: / to search, n/N for next/prev\n"
                     "Plot: p to toggle visualization\n"
-                    "Quit: q or Esc[/dim]",
+                    "Toggle preview: t\n"
+                    "Quit: q[/dim]",
                     id="welcome"
                 )
 
-        # Search input at bottom (initially hidden)
-        search_input = Input(placeholder="Type to search, Enter to find matches, Esc to cancel", id="search-input")
-        search_input.add_class("hidden")
-        yield search_input
+        # Status bar above footer
+        yield Static("Ready", id="status-bar")
+
+        # Footer at bottom
         yield Footer()
 
     def on_mount(self) -> None:
@@ -179,11 +241,15 @@ class TanotlyApp(App[None]):
         tree.focus()
 
     def load_file(self, path: str) -> None:
+        """Load and display file with improved performance."""
         try:
             self._update_status(f"Loading {Path(path).name}...")
+
+            # Load file data
             self.full_dataset_info = DataReader.read_file(path)
             self.dataset = self.full_dataset_info
 
+            # Setup tree
             tree = self.query_one("#tree", Tree)
             tree.clear()
             tree.show_root = True
@@ -194,23 +260,23 @@ class TanotlyApp(App[None]):
             tree.root.label = self._format_label(self.dataset.root_node)
             tree.root.data = self.dataset.root_node
 
+            # Populate tree structure
             self._populate_tree(tree.root, self.dataset.root_node)
 
-            # Expand root and first level
+            # Expand only root (not all children) for faster startup
             tree.root.expand()
-            for child in tree.root.children:
-                if child.data and child.data.node_type != NodeType.ATTRIBUTE:
-                    child.expand()
 
-            # Focus tree and select root node to show global attributes
+            # Focus tree and select root node
             tree.focus()
             tree.select_node(tree.root)
 
+            # Show ready status
+            var_count = len(self.dataset.variables) if self.dataset.variables else 0
             self._update_status(
-                f"{Path(path).name} | {len(self.dataset.variables)} variables | Use ↑↓ arrows"
+                f"{Path(path).name} loaded | {var_count} variables | Press / to search"
             )
         except Exception as e:
-            self._update_status(f"Error: {e}")
+            self._update_status(f"Error loading file: {e}")
 
     def _populate_tree(self, tree_node, data_node: DataNode) -> None:
         """Recursively populate tree."""
@@ -265,13 +331,35 @@ class TanotlyApp(App[None]):
             return f"{ndim}D"
 
     def _format_label(self, node: DataNode) -> str:
-        """Format node label WITHOUT icons (Tree widget already provides arrows)."""
+        """
+        Format node label WITHOUT icons (Tree widget already provides arrows).
+
+        COLOR CUSTOMIZATION:
+        -------------------
+        Change the colors in the [color]...[/color] tags below to customize
+        tree node appearance. Available Rich markup colors:
+
+        - Basic: black, red, green, yellow, blue, magenta, cyan, white
+        - Bright: bright_black, bright_red, bright_green, bright_yellow,
+                  bright_blue, bright_magenta, bright_cyan, bright_white
+        - Modifiers: bold, italic, underline, dim
+
+        Current color scheme:
+        - ROOT nodes:      bold magenta
+        - GROUP nodes:     yellow
+        - VARIABLE nodes:  cyan
+        - DIMENSION nodes: blue
+        - ATTRIBUTE nodes: magenta
+        - Metadata text:   dim (gray)
+        """
         if node.node_type == NodeType.ROOT:
+            # Change 'magenta' to customize root node color
             return f"[bold magenta]{node.name}[/bold magenta]"
 
         elif node.node_type == NodeType.GROUP:
             # Count non-attribute children
             child_count = sum(1 for c in node.children if c.node_type != NodeType.ATTRIBUTE)
+            # Change 'yellow' to customize group color
             return f"[yellow]{node.name}[/yellow] [dim]({child_count})[/dim]"
 
         elif node.node_type == NodeType.VARIABLE:
@@ -281,12 +369,14 @@ class TanotlyApp(App[None]):
 
             if shape and dtype:
                 shape_str = "×".join(str(s) for s in shape)
+                # Change 'cyan' to customize variable color
                 return f"[cyan]{node.name}[/cyan] [dim]({shape_str}) {data_type} {dtype}[/dim]"
             return f"[cyan]{node.name}[/cyan]"
 
         elif node.node_type == NodeType.DIMENSION:
             size = node.metadata.get("size", "")
             if size:
+                # Change 'blue' to customize dimension color
                 return f"[blue]{node.name}[/blue] [dim]({size})[/dim]"
             return f"[blue]{node.name}[/blue]"
 
@@ -297,6 +387,7 @@ class TanotlyApp(App[None]):
             # Truncate if too long
             if len(name_escaped) > 60:
                 name_escaped = name_escaped[:57] + "..."
+            # Change 'magenta' to customize attribute color
             return f"[magenta]{name_escaped}[/magenta]"
 
         else:
@@ -485,29 +576,43 @@ class TanotlyApp(App[None]):
             self._collect_all_tree_nodes(child, result_list)
 
     def action_start_search(self) -> None:
-        """Start a search using the bottom bar."""
+        """Start search mode - just update status."""
         if not self.full_dataset_info:
             return
+        self.search_buffer = ""
+        self._update_status("🔍 Search: _ | Type to search, Enter to find, Esc to cancel")
 
-        self.search_mode = True
-        # Show and focus the search input
-        search_input = self.query_one("#search-input", Input)
-        search_input.remove_class("hidden")
-        search_input.value = ""
-        search_input.focus()
-        self._update_status("🔍 Search Mode | Type query and press Enter")
-
-    def on_input_submitted(self, event: Input.Submitted) -> None:
-        """Handle search query submission - Enter key initiates search."""
-        if event.input.id == "search-input":
-            self.search_query = event.value.strip()
-            if self.search_query:
-                self._perform_search()
-                # Return focus to tree after search
-                tree = self.query_one("#tree", Tree)
-                tree.focus()
-            else:
+    def on_key(self, event) -> None:
+        """Handle key presses for search."""
+        # Only handle if we're in search mode (buffer is not empty or we just started)
+        if self.search_buffer is not None and len(self.search_buffer) >= 0:
+            if event.key == "enter":
+                # Execute search
+                if self.search_buffer:
+                    self.search_query = self.search_buffer
+                    self._perform_search()
+                self.search_buffer = None
+                event.prevent_default()
+                event.stop()
+            elif event.key == "escape":
+                # Cancel search
+                self.search_buffer = None
                 self.action_cancel_search()
+                event.prevent_default()
+                event.stop()
+            elif event.key == "backspace":
+                # Remove last character
+                if self.search_buffer:
+                    self.search_buffer = self.search_buffer[:-1]
+                    self._update_status(f"🔍 Search: {self.search_buffer}_ | Enter to find, Esc to cancel")
+                    event.prevent_default()
+                    event.stop()
+            elif len(event.key) == 1 and event.key.isprintable():
+                # Add character to buffer
+                self.search_buffer += event.key
+                self._update_status(f"🔍 Search: {self.search_buffer}_ | Enter to find, Esc to cancel")
+                event.prevent_default()
+                event.stop()
 
     def _perform_search(self):
         """Find all matches for current search query in the entire tree."""
@@ -538,29 +643,27 @@ class TanotlyApp(App[None]):
                     self.search_matches.append(tree_node)
                     continue
 
-                # Search in attributes
+                # Search in attribute KEYS only (not values)
                 if tree_node.data.attributes:
-                    for key, val in tree_node.data.attributes.items():
-                        if query_lower in key.lower() or query_lower in str(val).lower():
+                    for key in tree_node.data.attributes.keys():
+                        if query_lower in key.lower():
                             self.search_matches.append(tree_node)
                             break
 
-                # Search in metadata
+                # Search in metadata KEYS only (not values)
                 if tree_node.data.metadata:
-                    for key, val in tree_node.data.metadata.items():
-                        if query_lower in str(key).lower() or query_lower in str(val).lower():
+                    for key in tree_node.data.metadata.keys():
+                        if query_lower in str(key).lower():
                             self.search_matches.append(tree_node)
                             break
 
         if self.search_matches:
             self.current_match_idx = 0
             self._jump_to_current_match()
-            search_input = self.query_one("#search-input", Input)
-            search_input.value = f"'{self.search_query}' | {len(self.search_matches)} matches | n/N to navigate | Esc to exit"
+            # Status is updated in _jump_to_current_match
         else:
             self.current_match_idx = -1
-            search_input = self.query_one("#search-input", Input)
-            search_input.value = f"No matches for '{self.search_query}' | Esc to exit"
+            self._update_status(f"🔍 No matches for '{self.search_query}' | Esc to exit search")
 
     def _expand_all_nodes(self, tree_node):
         """Recursively expand all nodes in the tree."""
@@ -583,9 +686,12 @@ class TanotlyApp(App[None]):
             tree.select_node(match_node)
             tree.scroll_to_node(match_node)
 
-            # Update the search input to show current match
-            search_input = self.query_one("#search-input", Input)
-            search_input.value = f"Match {self.current_match_idx + 1}/{len(self.search_matches)}: '{self.search_query}' | n/N | Esc to exit"
+            # Update the status bar to show current match position
+            match_num = self.current_match_idx + 1
+            total_matches = len(self.search_matches)
+            self._update_status(
+                f"🔍 Match {match_num}/{total_matches}: '{self.search_query}' | n=next N=prev Esc=exit"
+            )
 
     def action_next_match(self) -> None:
         """Jump to next search match."""
@@ -603,24 +709,17 @@ class TanotlyApp(App[None]):
 
     def action_cancel_search(self) -> None:
         """Cancel/exit search mode."""
-        self.search_mode = False
+        self.search_buffer = None
         self.search_query = ""
         self.search_matches = []
         self.current_match_idx = -1
 
-        # Hide search input
-        search_input = self.query_one("#search-input", Input)
-        search_input.add_class("hidden")
-        search_input.value = ""
-
-        # Return focus to tree
-        tree = self.query_one("#tree", Tree)
-        tree.focus()
-
+        # Clear status
         if self.file_path:
-            self._update_status(f"{Path(self.file_path).name} | Press / to search")
+            var_count = len(self.dataset.variables) if self.dataset and self.dataset.variables else 0
+            self._update_status(f"{Path(self.file_path).name} | {var_count} variables | Press / to search")
         else:
-            self._update_status("")
+            self._update_status("Ready | Press / to search")
 
     # Vim-style navigation
     def action_cursor_up(self) -> None:
@@ -670,14 +769,30 @@ class TanotlyApp(App[None]):
         if self.show_preview:
             # Show preview pane
             detail_container.remove_class("hidden")
-            tree_container.styles.width = "40%"
-            detail_container.styles.width = "60%"
+            tree_container.styles.width = "50%"
+            detail_container.styles.width = "50%"
             self._update_status("Preview pane: ON")
         else:
             # Hide preview pane, expand tree to full width
             tree_container.styles.width = "100%"
             detail_container.styles.width = "0"
             self._update_status("Preview pane: OFF (tree full width)")
+
+    def action_scroll_preview_down(self) -> None:
+        """Scroll detail container down (Ctrl+d or Shift+j)."""
+        try:
+            detail_container = self.query_one("#detail-container", VerticalScroll)
+            detail_container.scroll_relative(y=5, animate=False)
+        except Exception:
+            pass
+
+    def action_scroll_preview_up(self) -> None:
+        """Scroll detail container up (Ctrl+u or Shift+k)."""
+        try:
+            detail_container = self.query_one("#detail-container", VerticalScroll)
+            detail_container.scroll_relative(y=-5, animate=False)
+        except Exception:
+            pass
 
     def action_copy_tree(self) -> None:
         """Copy the entire tree structure as text."""
@@ -795,4 +910,5 @@ class TanotlyApp(App[None]):
             self._update_status(f"Copy failed: {e}")
 
     def _update_status(self, msg: str) -> None:
-        self.query_one("#top-bar", Static).update(msg)
+        """Update the status bar with a message."""
+        self.query_one("#status-bar", Static).update(msg)
