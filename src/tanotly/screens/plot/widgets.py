@@ -1,10 +1,13 @@
 """Plot widgets for 1D and 2D data visualization."""
 
+from typing import Optional
 import numpy as np
 from textual_plotext import PlotextPlot
 
 from ...config import ThemeManager
 from .colormap import apply_colormap
+from .constants import PLOT_1D_DEFAULT_WIDTH, PLOT_1D_HEIGHT, PLOT_2D_DEFAULT_WIDTH, PLOT_2D_DEFAULT_HEIGHT
+from .utils import handle_nan_values_1d, handle_nan_values_2d
 
 
 class DataPlot1D(PlotextPlot):
@@ -12,24 +15,30 @@ class DataPlot1D(PlotextPlot):
 
     ALLOW_FOCUS = False
 
-    def __init__(self, data: np.ndarray, is_dark: bool = True, width: int = 60, height: int = 15, **kwargs):
+    def __init__(
+        self,
+        data: np.ndarray,
+        is_dark: bool = True,
+        width: int = PLOT_1D_DEFAULT_WIDTH,
+        height: int = PLOT_1D_HEIGHT,
+        **kwargs
+    ) -> None:
+        """Initialize 1D plot widget.
+
+        Args:
+            data: 1D numpy array to plot
+            is_dark: Whether to use dark theme
+            width: Plot width in characters
+            height: Plot height in characters
+            **kwargs: Additional arguments passed to PlotextPlot
+        """
         super().__init__(**kwargs)
         self._is_dark = is_dark
         self._width = width
         self._height = height
 
-        # Handle NaN values
-        if np.issubdtype(data.dtype, np.floating):
-            mask = np.isfinite(data)
-            if np.any(mask):
-                self._data = data.copy()
-                self._valid_mask = mask
-            else:
-                self._data = np.zeros(min(10, len(data)))
-                self._valid_mask = np.ones(len(self._data), dtype=bool)
-        else:
-            self._data = data
-            self._valid_mask = np.ones(len(data), dtype=bool)
+        # Handle NaN values using utility function
+        self._data, self._valid_mask = handle_nan_values_1d(data)
 
         # Set explicit size
         self.styles.width = width
@@ -65,23 +74,30 @@ class DataPlot2D(PlotextPlot):
 
     ALLOW_FOCUS = False
 
-    def __init__(self, data: np.ndarray, is_dark: bool = True, width: int = 60, height: int = 20, **kwargs):
+    def __init__(
+        self,
+        data: np.ndarray,
+        is_dark: bool = True,
+        width: int = PLOT_2D_DEFAULT_WIDTH,
+        height: int = PLOT_2D_DEFAULT_HEIGHT,
+        **kwargs
+    ) -> None:
+        """Initialize 2D heatmap plot widget.
+
+        Args:
+            data: 2D numpy array to plot
+            is_dark: Whether to use dark theme
+            width: Plot width in characters
+            height: Plot height in characters
+            **kwargs: Additional arguments passed to PlotextPlot
+        """
         super().__init__(**kwargs)
         self._is_dark = is_dark
         self._width = width
         self._height = height
 
-        # Handle NaN values and ensure we have a proper copy
-        data = np.array(data, copy=True)
-        if np.issubdtype(data.dtype, np.floating):
-            nan_mask = np.isnan(data)
-            if np.any(nan_mask):
-                valid_mean = np.nanmean(data) if np.any(~nan_mask) else 0.0
-                self._data = np.where(nan_mask, valid_mean, data)
-            else:
-                self._data = data
-        else:
-            self._data = data.astype(float)
+        # Handle NaN values using utility function
+        self._data = handle_nan_values_2d(data)
 
         # Set explicit size
         self.styles.width = width
@@ -112,17 +128,11 @@ class DataPlot2D(PlotextPlot):
         self.refresh()
 
     def update_data(self, data: np.ndarray) -> None:
-        """Update the plot with new data."""
-        # Handle NaN values and ensure we have a proper copy
-        data = np.array(data, copy=True)
-        if np.issubdtype(data.dtype, np.floating):
-            nan_mask = np.isnan(data)
-            if np.any(nan_mask):
-                valid_mean = np.nanmean(data) if np.any(~nan_mask) else 0.0
-                self._data = np.where(nan_mask, valid_mean, data)
-            else:
-                self._data = data
-        else:
-            self._data = data.astype(float)
+        """Update the plot with new data.
 
+        Args:
+            data: New 2D numpy array to display
+        """
+        # Handle NaN values using utility function
+        self._data = handle_nan_values_2d(data)
         self._draw_plot()

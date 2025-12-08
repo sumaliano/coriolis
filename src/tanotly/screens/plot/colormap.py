@@ -3,6 +3,7 @@
 Provides viridis-like perceptually uniform, colorblind-friendly colormap.
 """
 
+from typing import List, Tuple
 import numpy as np
 
 
@@ -15,7 +16,7 @@ VIRIDIS_COLORS = [
 ]
 
 
-def apply_colormap(data: np.ndarray) -> list[list[tuple[int, int, int]]]:
+def apply_colormap(data: np.ndarray) -> List[List[Tuple[int, int, int]]]:
     """Apply viridis colormap to normalized data, returning RGB tuples.
 
     Args:
@@ -24,24 +25,33 @@ def apply_colormap(data: np.ndarray) -> list[list[tuple[int, int, int]]]:
     Returns:
         List of lists of RGB tuples (0-255 range)
     """
+    # Replace NaN values with zero
     data_clean = np.nan_to_num(data, nan=0.0)
+
+    # Calculate data range
     data_min = np.nanmin(data_clean)
     data_max = np.nanmax(data_clean)
 
+    # Normalize to [0, 1] range
     if data_max == data_min:
+        # Constant data - use middle of colormap
         normalized = np.full_like(data_clean, 0.5)
     else:
         normalized = (data_clean - data_min) / (data_max - data_min)
 
     normalized = np.clip(normalized, 0.0, 1.0)
 
+    # Map normalized values to colormap indices
     n_colors = len(VIRIDIS_COLORS)
-    result = []
+    result: List[List[Tuple[int, int, int]]] = []
+
     for row in normalized:
-        rgb_row = []
+        rgb_row: List[Tuple[int, int, int]] = []
         for val in row:
-            idx = min(max(int(val * (n_colors - 1)), 0), n_colors - 1)
-            rgb_row.append(VIRIDIS_COLORS[idx])
+            # Map [0, 1] value to colormap index
+            color_idx = int(val * (n_colors - 1))
+            color_idx = max(0, min(color_idx, n_colors - 1))  # Clamp to valid range
+            rgb_row.append(VIRIDIS_COLORS[color_idx])
         result.append(rgb_row)
 
     return result
