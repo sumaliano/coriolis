@@ -27,7 +27,7 @@ from .data.models import NodeType
 from .details import render_details, load_variable_data
 from .search import SearchState, perform_search, jump_to_match, format_search_status
 from .tree import populate_tree, format_label
-from .plot_screen import PlotScreen
+from .screens import PlotScreen
 
 if TYPE_CHECKING:
     from textual.widgets._tree import TreeNode

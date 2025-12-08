@@ -238,7 +238,7 @@ def _render_attributes(container: VerticalScroll, node: DataNode) -> None:
     """Render node attributes section."""
     lines = [
         "",
-        f"[bold {Colors.root()}]attributes:[/bold {Colors.root()}]",
+        f"[bold {Colors.root()}]Attributes:[/bold {Colors.root()}]",
     ]
     
     for key, val in node.attributes.items():
