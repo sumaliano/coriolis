@@ -336,12 +336,18 @@ class Colors:
 # NODE ICONS
 # =============================================================================
 
+# Using simple ASCII/Unicode characters that render well in all terminals
+# Alternative styles available:
+# - Box drawing: ┌─┐ ├─┤ └─┘
+# - Geometric: ■ □ ▪ ▫ ● ○ ◆ ◇ ▲ △
+# - ASCII-art: [+] [-] [*] [>] [#]
+
 NODE_ICONS = {
-    NodeType.ROOT: "🏠",
-    NodeType.GROUP: "📂",
-    NodeType.VARIABLE: "🌡️",
-    NodeType.DIMENSION: "📏",
-    NodeType.ATTRIBUTE: "🏷️",
+    NodeType.ROOT: "■",      # Solid square for root/file
+    NodeType.GROUP: "▶",     # Right-pointing triangle for expandable groups
+    NodeType.VARIABLE: "●",  # Solid circle for data variables
+    NodeType.DIMENSION: "│",  # Vertical line for dimensions (measure/axis)
+    NodeType.ATTRIBUTE: "▫",  # Small hollow square for metadata/attributes
 }
 
 
