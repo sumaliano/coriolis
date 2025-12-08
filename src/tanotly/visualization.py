@@ -5,7 +5,7 @@ from textual.widgets import Static
 from textual.app import ComposeResult
 from textual_plotext import PlotextPlot
 
-from .config import get_plot_colors
+from .config import ThemeManager
 
 
 # Viridis-like colormap (perceptually uniform, colorblind-friendly)
@@ -73,7 +73,7 @@ class DataPlot1D(PlotextPlot):
     def on_mount(self) -> None:
         """Configure and draw the plot."""
         super().on_mount()
-        colors = get_plot_colors(self._is_dark)
+        colors = ThemeManager.get_plot_colors()
         plot_bg = colors["bg"]
         plot_fg = colors["fg"]
         plot_line = colors.get("line", colors["accent"])
@@ -129,7 +129,7 @@ class DataPlot2D(PlotextPlot):
 
     def _draw_plot(self) -> None:
         """Draw the heatmap plot."""
-        colors = get_plot_colors(self._is_dark)
+        colors = ThemeManager.get_plot_colors()
         plot_bg = colors["bg"]
         plot_fg = colors["fg"]
 

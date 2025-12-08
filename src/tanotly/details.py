@@ -14,7 +14,7 @@ import xarray as xr
 from textual.containers import VerticalScroll
 from textual.widgets import Static
 
-from .config import NODE_ICONS, ThemeColors
+from .config import NODE_ICONS, Colors
 from .data.models import DataNode, DatasetInfo, NodeType
 from .visualization import format_statistics, format_sample_values
 
@@ -48,13 +48,13 @@ def render_details(
 def _get_node_color(node_type: NodeType) -> str:
     """Get the theme color for a node type."""
     colors = {
-        NodeType.ROOT: ThemeColors.root(),
-        NodeType.GROUP: ThemeColors.group(),
-        NodeType.VARIABLE: ThemeColors.variable(),
-        NodeType.DIMENSION: ThemeColors.dimension(),
-        NodeType.ATTRIBUTE: ThemeColors.root(),
+        NodeType.ROOT: Colors.root(),
+        NodeType.GROUP: Colors.group(),
+        NodeType.VARIABLE: Colors.variable(),
+        NodeType.DIMENSION: Colors.dimension(),
+        NodeType.ATTRIBUTE: Colors.root(),
     }
-    return colors.get(node_type, ThemeColors.foreground())
+    return colors.get(node_type, Colors.muted())
 
 
 def _render_header(container: VerticalScroll, node: DataNode) -> None:
@@ -66,8 +66,8 @@ def _render_header(container: VerticalScroll, node: DataNode) -> None:
     lines = [
         f"{icon} [bold {color}]{node.name}[/bold {color}]",
         "─" * 50,
-        f"[{ThemeColors.muted()}]Type:[/{ThemeColors.muted()}] [{color}]{node.node_type.value}[/{color}]",
-        f"[{ThemeColors.muted()}]Path:[/{ThemeColors.muted()}] [{ThemeColors.info()}]{node.path}[/{ThemeColors.info()}]",
+        f"[{Colors.muted()}]Type:[/{Colors.muted()}] [{color}]{node.node_type.value}[/{color}]",
+        f"[{Colors.muted()}]Path:[/{Colors.muted()}] [{Colors.info()}]{node.path}[/{Colors.info()}]",
     ]
     
     container.mount(Static("\n".join(lines)))
@@ -83,27 +83,27 @@ def _render_variable_info(container: VerticalScroll, node: DataNode) -> None:
 
     lines = [
         "",
-        f"[bold {ThemeColors.group()}]Array Info[/bold {ThemeColors.group()}]",
+        f"[bold {Colors.group()}]Array Info[/bold {Colors.group()}]",
     ]
 
     # Dimensions with sizes
     if dims and shape and len(dims) == len(shape):
         dim_parts = [
-            f"[{ThemeColors.dimension()}]{d}[/{ThemeColors.dimension()}]={s}"
+            f"[{Colors.dimension()}]{d}[/{Colors.dimension()}]={s}"
             for d, s in zip(dims, shape)
         ]
-        lines.append(f"  [{ThemeColors.muted()}]Dimensions:[/{ThemeColors.muted()}] {', '.join(dim_parts)}")
+        lines.append(f"  [{Colors.muted()}]Dimensions:[/{Colors.muted()}] {', '.join(dim_parts)}")
     elif shape:
         shape_str = " × ".join(str(s) for s in shape)
-        lines.append(f"  [{ThemeColors.muted()}]Shape:[/{ThemeColors.muted()}] {shape_str}")
+        lines.append(f"  [{Colors.muted()}]Shape:[/{Colors.muted()}] {shape_str}")
 
     # Data type
     if dtype:
-        lines.append(f"  [{ThemeColors.muted()}]Type:[/{ThemeColors.muted()}] {dtype}")
+        lines.append(f"  [{Colors.muted()}]Type:[/{Colors.muted()}] {dtype}")
 
     # Size
     if isinstance(size, int) and size > 0:
-        lines.append(f"  [{ThemeColors.muted()}]Size:[/{ThemeColors.muted()}] {size:,} elements")
+        lines.append(f"  [{Colors.muted()}]Size:[/{Colors.muted()}] {size:,} elements")
 
     container.mount(Static("\n".join(lines)))
 
@@ -118,15 +118,15 @@ def _render_group_info(container: VerticalScroll, node: DataNode) -> None:
     # Summary counts
     lines = [
         "",
-        f"[bold {ThemeColors.group()}]Contents[/bold {ThemeColors.group()}]",
+        f"[bold {Colors.group()}]Contents[/bold {Colors.group()}]",
     ]
     
     if groups:
-        lines.append(f"  [{ThemeColors.muted()}]Groups:[/{ThemeColors.muted()}] {len(groups)}")
+        lines.append(f"  [{Colors.muted()}]Groups:[/{Colors.muted()}] {len(groups)}")
     if dims:
-        lines.append(f"  [{ThemeColors.muted()}]Dimensions:[/{ThemeColors.muted()}] {len(dims)}")
+        lines.append(f"  [{Colors.muted()}]Dimensions:[/{Colors.muted()}] {len(dims)}")
     if vars:
-        lines.append(f"  [{ThemeColors.muted()}]Variables:[/{ThemeColors.muted()}] {len(vars)}")
+        lines.append(f"  [{Colors.muted()}]Variables:[/{Colors.muted()}] {len(vars)}")
     
     container.mount(Static("\n".join(lines)))
 
@@ -147,7 +147,7 @@ def _render_dimensions_section(container: VerticalScroll, dims: list[DataNode]) 
     """Render dimensions in ncdump style."""
     lines = [
         "",
-        f"[bold {ThemeColors.dimension()}]dimensions:[/bold {ThemeColors.dimension()}]",
+        f"[bold {Colors.dimension()}]dimensions:[/bold {Colors.dimension()}]",
     ]
     
     for dim in dims:
@@ -157,13 +157,13 @@ def _render_dimensions_section(container: VerticalScroll, dims: list[DataNode]) 
         
         if is_unlimited:
             lines.append(
-                f"  [{ThemeColors.dimension()}]{dim_name}[/{ThemeColors.dimension()}] = "
-                f"[{ThemeColors.warning()}]UNLIMITED[/{ThemeColors.warning()}] ; "
-                f"[{ThemeColors.muted()}]// ({size} currently)[/{ThemeColors.muted()}]"
+                f"  [{Colors.dimension()}]{dim_name}[/{Colors.dimension()}] = "
+                f"[{Colors.warning()}]UNLIMITED[/{Colors.warning()}] ; "
+                f"[{Colors.muted()}]// ({size} currently)[/{Colors.muted()}]"
             )
         else:
             lines.append(
-                f"  [{ThemeColors.dimension()}]{dim_name}[/{ThemeColors.dimension()}] = {size} ;"
+                f"  [{Colors.dimension()}]{dim_name}[/{Colors.dimension()}] = {size} ;"
             )
     
     container.mount(Static("\n".join(lines)))
@@ -173,7 +173,7 @@ def _render_variables_section(container: VerticalScroll, vars: list[DataNode]) -
     """Render variables in ncdump style with attributes."""
     lines = [
         "",
-        f"[bold {ThemeColors.variable()}]variables:[/bold {ThemeColors.variable()}]",
+        f"[bold {Colors.variable()}]variables:[/bold {Colors.variable()}]",
     ]
     
     for var in vars:
@@ -184,14 +184,14 @@ def _render_variables_section(container: VerticalScroll, vars: list[DataNode]) -
         if dims:
             dim_str = ", ".join(dims)
             lines.append(
-                f"  [{ThemeColors.muted()}]{dtype}[/{ThemeColors.muted()}] "
-                f"[bold {ThemeColors.variable()}]{var.name}[/bold {ThemeColors.variable()}]"
+                f"  [{Colors.muted()}]{dtype}[/{Colors.muted()}] "
+                f"[bold {Colors.variable()}]{var.name}[/bold {Colors.variable()}]"
                 f"({dim_str}) ;"
             )
         else:
             lines.append(
-                f"  [{ThemeColors.muted()}]{dtype}[/{ThemeColors.muted()}] "
-                f"[bold {ThemeColors.variable()}]{var.name}[/bold {ThemeColors.variable()}] ;"
+                f"  [{Colors.muted()}]{dtype}[/{Colors.muted()}] "
+                f"[bold {Colors.variable()}]{var.name}[/bold {Colors.variable()}] ;"
             )
 
         # Show variable attributes (ncdump style: :attr = value ;)
@@ -199,7 +199,7 @@ def _render_variables_section(container: VerticalScroll, vars: list[DataNode]) -
             for attr_name, attr_val in var.attributes.items():
                 val_str = _format_attribute_value(attr_val, max_len=40)
                 lines.append(
-                    f"    [{ThemeColors.root()}]:{attr_name}[/{ThemeColors.root()}] = {val_str} ;"
+                    f"    [{Colors.root()}]:{attr_name}[/{Colors.root()}] = {val_str} ;"
                 )
     
     container.mount(Static("\n".join(lines)))
@@ -209,7 +209,7 @@ def _render_groups_section(container: VerticalScroll, groups: list[DataNode]) ->
     """Render subgroups summary."""
     lines = [
         "",
-        f"[bold {ThemeColors.group()}]groups:[/bold {ThemeColors.group()}]",
+        f"[bold {Colors.group()}]groups:[/bold {Colors.group()}]",
     ]
     
     for grp in groups:
@@ -227,8 +227,8 @@ def _render_groups_section(container: VerticalScroll, groups: list[DataNode]) ->
         
         info = ", ".join(info_parts) if info_parts else "empty"
         lines.append(
-            f"  [{ThemeColors.group()}]{grp.name}[/{ThemeColors.group()}] "
-            f"[{ThemeColors.muted()}]({info})[/{ThemeColors.muted()}]"
+            f"  [{Colors.group()}]{grp.name}[/{Colors.group()}] "
+            f"[{Colors.muted()}]({info})[/{Colors.muted()}]"
         )
     
     container.mount(Static("\n".join(lines)))
@@ -238,12 +238,12 @@ def _render_attributes(container: VerticalScroll, node: DataNode) -> None:
     """Render node attributes section."""
     lines = [
         "",
-        f"[bold {ThemeColors.root()}]attributes:[/bold {ThemeColors.root()}]",
+        f"[bold {Colors.root()}]attributes:[/bold {Colors.root()}]",
     ]
     
     for key, val in node.attributes.items():
         val_str = _format_attribute_value(val, max_len=60)
-        lines.append(f"  [{ThemeColors.root()}]:{key}[/{ThemeColors.root()}] = {val_str} ;")
+        lines.append(f"  [{Colors.root()}]:{key}[/{Colors.root()}] = {val_str} ;")
     
     container.mount(Static("\n".join(lines)))
 
@@ -258,18 +258,18 @@ def _render_data_preview(
         data = load_variable_data(node, dataset)
     except Exception as e:
         container.mount(Static(
-            f"\n[{ThemeColors.error()}]Error loading data: {e}[/{ThemeColors.error()}]"
+            f"\n[{Colors.error()}]Error loading data: {e}[/{Colors.error()}]"
         ))
         return
 
     if data is None:
-        container.mount(Static(f"\n[{ThemeColors.muted()}]Could not load data[/{ThemeColors.muted()}]"))
+        container.mount(Static(f"\n[{Colors.muted()}]Could not load data[/{Colors.muted()}]"))
         return
 
     lines = [
         "",
-        f"[bold {ThemeColors.success()}]Data Preview[/bold {ThemeColors.success()}] "
-        f"[{ThemeColors.muted()}](press p to plot, d for table)[/{ThemeColors.muted()}]",
+        f"[bold {Colors.success()}]Data Preview[/bold {Colors.success()}] "
+        f"[{Colors.muted()}](press p to plot, d for table)[/{Colors.muted()}]",
     ]
     container.mount(Static("\n".join(lines)))
 
@@ -303,26 +303,26 @@ def _format_statistics_themed(data: np.ndarray) -> str:
     valid_count = np.count_nonzero(~np.isnan(data)) if is_float else data.size
     nan_count = data.size - valid_count
 
-    lines = [f"[{ThemeColors.info()}]Statistics:[/{ThemeColors.info()}]"]
+    lines = [f"[{Colors.info()}]Statistics:[/{Colors.info()}]"]
     
     try:
-        lines.append(f"  [{ThemeColors.muted()}]Min:[/{ThemeColors.muted()}]  {np.nanmin(data):.6g}")
-        lines.append(f"  [{ThemeColors.muted()}]Max:[/{ThemeColors.muted()}]  {np.nanmax(data):.6g}")
-        lines.append(f"  [{ThemeColors.muted()}]Mean:[/{ThemeColors.muted()}] {np.nanmean(data):.6g}")
+        lines.append(f"  [{Colors.muted()}]Min:[/{Colors.muted()}]  {np.nanmin(data):.6g}")
+        lines.append(f"  [{Colors.muted()}]Max:[/{Colors.muted()}]  {np.nanmax(data):.6g}")
+        lines.append(f"  [{Colors.muted()}]Mean:[/{Colors.muted()}] {np.nanmean(data):.6g}")
         
         if data.size > 1:
-            lines.append(f"  [{ThemeColors.muted()}]Std:[/{ThemeColors.muted()}]  {np.nanstd(data):.6g}")
+            lines.append(f"  [{Colors.muted()}]Std:[/{Colors.muted()}]  {np.nanstd(data):.6g}")
         
         if nan_count > 0:
             pct = nan_count / data.size * 100
             lines.append(
-                f"  [{ThemeColors.warning()}]NaN:[/{ThemeColors.warning()}]  "
+                f"  [{Colors.warning()}]NaN:[/{Colors.warning()}]  "
                 f"{nan_count:,} ({pct:.1f}%)"
             )
         
-        lines.append(f"  [{ThemeColors.muted()}]Valid:[/{ThemeColors.muted()}] {valid_count:,}")
+        lines.append(f"  [{Colors.muted()}]Valid:[/{Colors.muted()}] {valid_count:,}")
     except Exception:
-        lines.append(f"  [{ThemeColors.error()}]Could not compute statistics[/{ThemeColors.error()}]")
+        lines.append(f"  [{Colors.error()}]Could not compute statistics[/{Colors.error()}]")
 
     return "\n".join(lines)
 
@@ -330,9 +330,9 @@ def _format_statistics_themed(data: np.ndarray) -> str:
 def _format_sample_values_themed(data: np.ndarray, max_lines: int = 8) -> str:
     """Format sample values with theme colors."""
     if data.size == 0:
-        return f"[{ThemeColors.muted()}](empty array)[/{ThemeColors.muted()}]"
+        return f"[{Colors.muted()}](empty array)[/{Colors.muted()}]"
 
-    lines = [f"[{ThemeColors.variable()}]Sample Values:[/{ThemeColors.variable()}]"]
+    lines = [f"[{Colors.variable()}]Sample Values:[/{Colors.variable()}]"]
 
     if data.ndim == 1:
         lines.extend(_format_1d_samples(data, max_lines))
@@ -350,16 +350,16 @@ def _format_1d_samples(data: np.ndarray, max_lines: int) -> list[str]:
     
     if data.size <= max_lines:
         for i, val in enumerate(data):
-            lines.append(f"  [{ThemeColors.muted()}][{i}][/{ThemeColors.muted()}] {val}")
+            lines.append(f"  [{Colors.muted()}][{i}][/{Colors.muted()}] {val}")
     else:
         n = max_lines // 2
         for i in range(n):
-            lines.append(f"  [{ThemeColors.muted()}][{i}][/{ThemeColors.muted()}] {data[i]}")
+            lines.append(f"  [{Colors.muted()}][{i}][/{Colors.muted()}] {data[i]}")
         
-        lines.append(f"  [{ThemeColors.muted()}]... ({data.size - 2*n} more) ...[/{ThemeColors.muted()}]")
+        lines.append(f"  [{Colors.muted()}]... ({data.size - 2*n} more) ...[/{Colors.muted()}]")
         
         for i in range(data.size - n, data.size):
-            lines.append(f"  [{ThemeColors.muted()}][{i}][/{ThemeColors.muted()}] {data[i]}")
+            lines.append(f"  [{Colors.muted()}][{i}][/{Colors.muted()}] {data[i]}")
     
     return lines
 
@@ -375,7 +375,7 @@ def _format_2d_samples(data: np.ndarray, max_lines: int) -> list[str]:
     def format_row(i: int) -> str:
         vals = " ".join(f"{data[i, j]:9.3g}" for j in range(min(show_cols, cols)))
         suffix = " ..." if cols > show_cols else ""
-        return f"  [{ThemeColors.muted()}][{i}][/{ThemeColors.muted()}] {vals}{suffix}"
+        return f"  [{Colors.muted()}][{i}][/{Colors.muted()}] {vals}{suffix}"
 
     # Top rows
     for i in range(min(show_rows, rows)):
@@ -383,7 +383,7 @@ def _format_2d_samples(data: np.ndarray, max_lines: int) -> list[str]:
 
     # Middle indicator
     if rows > show_rows * 2:
-        lines.append(f"  [{ThemeColors.muted()}]... {rows - show_rows * 2} rows omitted ...[/{ThemeColors.muted()}]")
+        lines.append(f"  [{Colors.muted()}]... {rows - show_rows * 2} rows omitted ...[/{Colors.muted()}]")
 
     # Bottom rows
     if rows > show_rows:
@@ -400,19 +400,19 @@ def _format_nd_samples(data: np.ndarray, max_lines: int) -> list[str]:
     
     # First values
     for i in range(min(n, data.size)):
-        lines.append(f"  [{ThemeColors.muted()}][{i}][/{ThemeColors.muted()}] {data.flat[i]}")
+        lines.append(f"  [{Colors.muted()}][{i}][/{Colors.muted()}] {data.flat[i]}")
 
     # Middle indicator
     if data.size > max_lines:
-        lines.append(f"  [{ThemeColors.muted()}]... {data.size - max_lines} values omitted ...[/{ThemeColors.muted()}]")
+        lines.append(f"  [{Colors.muted()}]... {data.size - max_lines} values omitted ...[/{Colors.muted()}]")
         
         # Last values
         for i in range(max(0, data.size - n), data.size):
-            lines.append(f"  [{ThemeColors.muted()}][{i}][/{ThemeColors.muted()}] {data.flat[i]}")
+            lines.append(f"  [{Colors.muted()}][{i}][/{Colors.muted()}] {data.flat[i]}")
 
     # Shape info
     shape_str = " × ".join(f"{s:,}" for s in data.shape)
-    lines.append(f"  [{ThemeColors.muted()}](Shape: {shape_str}, Total: {data.size:,})[/{ThemeColors.muted()}]")
+    lines.append(f"  [{Colors.muted()}](Shape: {shape_str}, Total: {data.size:,})[/{Colors.muted()}]")
     
     return lines
 

@@ -18,7 +18,7 @@ from textual.widgets import Static, DataTable, Select, TabbedContent, TabPane
 from textual.reactive import reactive
 
 from .visualization import DataPlot1D, DataPlot2D, VIRIDIS_COLORS
-from .config import ThemeColors
+from .config import Colors, ThemeManager
 
 
 class PlotScreen(ModalScreen[None]):
@@ -55,22 +55,22 @@ class PlotScreen(ModalScreen[None]):
         ndim = self._original_data.ndim
         
         # Variable name in accent color
-        parts = [f"[{ThemeColors.variable()}]{self._var_name}[/]"]
+        parts = [f"[{Colors.variable()}]{self._var_name}[/]"]
         
         # Dimension info: (dim1=size1, dim2=size2, ...)
         if self._dim_names and shape:
             dim_str = ", ".join(f"{d}={s}" for d, s in zip(self._dim_names, shape))
-            parts.append(f"[{ThemeColors.muted()}]({dim_str})[/]")
+            parts.append(f"[{Colors.muted()}]({dim_str})[/]")
         elif shape:
             dim_str = "×".join(str(s) for s in shape)
-            parts.append(f"[{ThemeColors.muted()}]({dim_str})[/]")
+            parts.append(f"[{Colors.muted()}]({dim_str})[/]")
         
         # Dimensionality label [nD]
         if ndim > 0:
-            parts.append(f"[{ThemeColors.muted()}]\\[{ndim}D][/]")
+            parts.append(f"[{Colors.muted()}]\\[{ndim}D][/]")
         
         # Data type
-        parts.append(f"[{ThemeColors.muted()}]{dtype}[/]")
+        parts.append(f"[{Colors.muted()}]{dtype}[/]")
         
         return " ".join(parts)
 
@@ -240,11 +240,8 @@ class PlotScreen(ModalScreen[None]):
         data = np.array(data, copy=True)
         width, height = self._calculate_plot_size(data)
         
-        # Get theme from app
-        try:
-            is_dark = self.app.dark
-        except Exception:
-            is_dark = True
+        # Get theme from ThemeManager
+        is_dark = ThemeManager.is_dark()
         
         if data.ndim == 1:
             # 1D line plot

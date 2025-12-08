@@ -21,7 +21,7 @@ from textual.widgets import Footer, Static, Tree
 from textual.timer import Timer
 
 from .clipboard import copy_to_clipboard, format_tree_text, format_node_info
-from .config import CSS_PATH as APP_CSS_PATH, ThemeColors
+from .config import CSS_PATH as APP_CSS_PATH, Colors, ThemeManager
 from .data import DataReader, DatasetInfo, DataNode
 from .data.models import NodeType
 from .details import render_details, load_variable_data
@@ -155,7 +155,16 @@ class TanotlyApp(App[None]):
     # =========================================================================
 
     def on_mount(self) -> None:
-        """Handle application mount - load file if provided."""
+        """Handle application mount - register themes and load file if provided."""
+        # Register all themes from ThemeManager with Textual
+        ThemeManager.register_all_themes(self)
+        
+        # Set initial theme
+        initial_theme = "gruvbox-dark"
+        self.theme = initial_theme
+        ThemeManager.set_theme(initial_theme)
+        self.dark = ThemeManager.is_dark()
+        
         self._get_tree().focus()
         if self.file_path:
             self.run_worker(self._load_file_async(self.file_path), name="file_loader")
@@ -235,7 +244,7 @@ class TanotlyApp(App[None]):
         detail = self._get_detail_container()
         detail.remove_children()
         await detail.mount(Static(
-            f"[{ThemeColors.error()}]Error loading file:[/{ThemeColors.error()}]\n\n{error}"
+            f"[{Colors.error()}]Error loading file:[/{Colors.error()}]\n\n{error}"
         ))
 
     # =========================================================================
@@ -426,23 +435,36 @@ class TanotlyApp(App[None]):
     # =========================================================================
 
     def action_cycle_theme(self) -> None:
-        """Toggle between Gruvbox dark and light themes."""
-        if self.has_class("light-theme"):
-            self.remove_class("light-theme")
-            self.dark = True
-            ThemeColors.set_dark_mode(True)
-            theme_name = "Gruvbox Dark"
-        else:
-            self.add_class("light-theme")
-            self.dark = False
-            ThemeColors.set_dark_mode(False)
-            theme_name = "Gruvbox Light"
+        """Cycle through all registered themes."""
+        # Get list of available themes from ThemeManager
+        available_themes = ThemeManager.get_theme_names()
         
-        # Refresh tree labels with new theme colors
+        if len(available_themes) < 2:
+            return
+        
+        # Find current theme index
+        current_theme = ThemeManager.get_current_theme()
+        try:
+            current_idx = available_themes.index(current_theme)
+        except ValueError:
+            current_idx = 0
+        
+        # Get next theme (cycle back to start if at end)
+        next_idx = (current_idx + 1) % len(available_themes)
+        next_theme = available_themes[next_idx]
+        
+        # Update all theme systems through ThemeManager
+        self.theme = next_theme
+        ThemeManager.set_theme(next_theme)
+        self.dark = ThemeManager.is_dark()
+        
+        # Refresh tree labels to apply new Rich markup colors
         if self.dataset:
             self._refresh_tree_labels()
         
-        self._status(f"Theme: {theme_name}")
+        # Format theme name for display using ThemeManager's display name
+        theme_display = ThemeManager.get_display_name(next_theme)
+        self._status(f"Theme: {theme_display}")
 
     def _refresh_tree_labels(self) -> None:
         """Refresh all tree labels with current theme colors."""
@@ -617,7 +639,7 @@ class TanotlyApp(App[None]):
             container = self._get_detail_container()
             container.remove_children()
             container.mount(Static(
-                f"[{ThemeColors.error()}]Error: {error}[/{ThemeColors.error()}]"
+                f"[{Colors.error()}]Error: {error}[/{Colors.error()}]"
             ))
         except Exception:
             pass

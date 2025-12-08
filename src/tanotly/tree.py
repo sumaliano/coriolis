@@ -18,7 +18,7 @@ from typing import TYPE_CHECKING
 
 from textual.widgets import Tree
 
-from .config import ThemeColors
+from .config import Colors
 from .data.models import DataNode, NodeType
 
 if TYPE_CHECKING:
@@ -88,7 +88,7 @@ def format_label(node: DataNode) -> str:
 
 def _format_root_label(node: DataNode) -> str:
     """Format root node label."""
-    return f"[bold {ThemeColors.root()}]{node.name}[/]"
+    return f"[bold {Colors.root()}]{node.name}[/]"
 
 
 def _format_group_label(node: DataNode) -> str:
@@ -99,8 +99,8 @@ def _format_group_label(node: DataNode) -> str:
         if c.node_type != NodeType.ATTRIBUTE
     )
     return (
-        f"[{ThemeColors.group()}]{node.name}[/] "
-        f"[{ThemeColors.muted()}]({child_count})[/]"
+        f"[{Colors.group()}]{node.name}[/] "
+        f"[{Colors.muted()}]({child_count})[/]"
     )
 
 
@@ -115,22 +115,22 @@ def _format_variable_label(node: DataNode) -> str:
     dims = meta.get("dims", ())
     dtype = meta.get("dtype", "")
     
-    parts = [f"[{ThemeColors.variable()}]{node.name}[/]"]
+    parts = [f"[{Colors.variable()}]{node.name}[/]"]
     
     # Dimension info
     dim_str = _format_dimensions(dims, shape)
     if dim_str:
-        parts.append(f"[{ThemeColors.muted()}]({dim_str})[/]")
+        parts.append(f"[{Colors.muted()}]({dim_str})[/]")
     
     # Dimensionality label (1D, 2D, Geo2D, etc.)
     dim_label = _get_dimensionality_label(dims, shape)
     if dim_label:
         # Escape brackets for Rich markup
-        parts.append(f"[{ThemeColors.muted()}]\\[{dim_label}][/]")
+        parts.append(f"[{Colors.muted()}]\\[{dim_label}][/]")
     
     # Data type
     if dtype:
-        parts.append(f"[{ThemeColors.muted()}]{dtype}[/]")
+        parts.append(f"[{Colors.muted()}]{dtype}[/]")
     
     return " ".join(parts)
 
@@ -141,10 +141,10 @@ def _format_dimension_label(node: DataNode) -> str:
     
     if size:
         return (
-            f"[{ThemeColors.dimension()}]{node.name}[/] "
-            f"[{ThemeColors.muted()}]({size})[/]"
+            f"[{Colors.dimension()}]{node.name}[/] "
+            f"[{Colors.muted()}]({size})[/]"
         )
-    return f"[{ThemeColors.dimension()}]{node.name}[/]"
+    return f"[{Colors.dimension()}]{node.name}[/]"
 
 
 def _format_attribute_label(node: DataNode) -> str:
