@@ -336,18 +336,22 @@ class Colors:
 # NODE ICONS
 # =============================================================================
 
-# Using simple ASCII/Unicode characters that render well in all terminals
-# Alternative styles available:
-# - Box drawing: ┌─┐ ├─┤ └─┘
-# - Geometric: ■ □ ▪ ▫ ● ○ ◆ ◇ ▲ △
-# - ASCII-art: [+] [-] [*] [>] [#]
+# Using expressive Unicode characters (U+2xxx range) that render well in terminals
+# These are widely supported and more semantic than emojis
+#
+# Alternative icons (uncomment to try):
+# ROOT:      ⊞ ⊠ ◘ ☰ ≡
+# GROUP:     ▹ ▷ ⊳ ☐ ⊟
+# VARIABLE:  ⚬ ⊙ ◎ ✦ ※ ⊕
+# DIMENSION: ⟷ ⊣ ⊢ ▬ ═ ┃
+# ATTRIBUTE: ⚑ ◇ ✱ ⊡ ▪ ∷
 
 NODE_ICONS = {
-    NodeType.ROOT: "■",      # Solid square for root/file
-    NodeType.GROUP: "▶",     # Right-pointing triangle for expandable groups
-    NodeType.VARIABLE: "●",  # Solid circle for data variables
-    NodeType.DIMENSION: "│",  # Vertical line for dimensions (measure/axis)
-    NodeType.ATTRIBUTE: "▫",  # Small hollow square for metadata/attributes
+    NodeType.ROOT: "⌂",      # House symbol - root/file entry point
+    NodeType.GROUP: "▸",     # Right-pointing triangle - expandable folder/group
+    NodeType.VARIABLE: "◉",  # Fisheye/bullseye - data point/variable
+    NodeType.DIMENSION: "↔",  # Left-right arrow - measurement/axis/dimension
+    NodeType.ATTRIBUTE: "◆",  # Diamond - tag/metadata/attribute
 }
 
 

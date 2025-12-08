@@ -81,9 +81,10 @@ def _render_variable_info(container: VerticalScroll, node: DataNode) -> None:
     dtype = meta.get("dtype", "")
     size = meta.get("size", 0)
 
+    var_icon = NODE_ICONS.get(NodeType.VARIABLE, "◉")
     lines = [
         "",
-        f"[bold {Colors.group()}]Array Info[/bold {Colors.group()}]",
+        f"[bold {Colors.group()}]{var_icon} Array Info[/bold {Colors.group()}]",
     ]
 
     # Dimensions with sizes
@@ -116,9 +117,10 @@ def _render_group_info(container: VerticalScroll, node: DataNode) -> None:
     groups = [c for c in node.children if c.node_type == NodeType.GROUP]
 
     # Summary counts
+    group_icon = NODE_ICONS.get(NodeType.GROUP, "▸")
     lines = [
         "",
-        f"[bold {Colors.group()}]Contents[/bold {Colors.group()}]",
+        f"[bold {Colors.group()}]{group_icon} Contents[/bold {Colors.group()}]",
     ]
     
     if groups:
@@ -145,16 +147,17 @@ def _render_group_info(container: VerticalScroll, node: DataNode) -> None:
 
 def _render_dimensions_section(container: VerticalScroll, dims: list[DataNode]) -> None:
     """Render dimensions in ncdump style."""
+    dim_icon = NODE_ICONS.get(NodeType.DIMENSION, "↔")
     lines = [
         "",
-        f"[bold {Colors.dimension()}]dimensions:[/bold {Colors.dimension()}]",
+        f"[bold {Colors.dimension()}]{dim_icon} dimensions:[/bold {Colors.dimension()}]",
     ]
-    
+
     for dim in dims:
         size = dim.metadata.get("size", "?")
         is_unlimited = dim.metadata.get("unlimited", False)
         dim_name = dim.name.split()[0]  # Remove any extra info
-        
+
         if is_unlimited:
             lines.append(
                 f"  [{Colors.dimension()}]{dim_name}[/{Colors.dimension()}] = "
@@ -165,17 +168,19 @@ def _render_dimensions_section(container: VerticalScroll, dims: list[DataNode]) 
             lines.append(
                 f"  [{Colors.dimension()}]{dim_name}[/{Colors.dimension()}] = {size} ;"
             )
-    
+
     container.mount(Static("\n".join(lines)))
 
 
 def _render_variables_section(container: VerticalScroll, vars: list[DataNode]) -> None:
     """Render variables in ncdump style with attributes."""
+    var_icon = NODE_ICONS.get(NodeType.VARIABLE, "◉")
+    attr_icon = NODE_ICONS.get(NodeType.ATTRIBUTE, "◆")
     lines = [
         "",
-        f"[bold {Colors.variable()}]variables:[/bold {Colors.variable()}]",
+        f"[bold {Colors.variable()}]{var_icon} variables:[/bold {Colors.variable()}]",
     ]
-    
+
     for var in vars:
         dtype = var.metadata.get("dtype", "")
         dims = var.metadata.get("dims", ())
@@ -199,24 +204,25 @@ def _render_variables_section(container: VerticalScroll, vars: list[DataNode]) -
             for attr_name, attr_val in var.attributes.items():
                 val_str = _format_attribute_value(attr_val, max_len=40)
                 lines.append(
-                    f"    [{Colors.root()}]:{attr_name}[/{Colors.root()}] = {val_str} ;"
+                    f"    {attr_icon} [{Colors.root()}]:{attr_name}[/{Colors.root()}] = {val_str} ;"
                 )
-    
+
     container.mount(Static("\n".join(lines)))
 
 
 def _render_groups_section(container: VerticalScroll, groups: list[DataNode]) -> None:
     """Render subgroups summary."""
+    group_icon = NODE_ICONS.get(NodeType.GROUP, "▸")
     lines = [
         "",
-        f"[bold {Colors.group()}]groups:[/bold {Colors.group()}]",
+        f"[bold {Colors.group()}]{group_icon} groups:[/bold {Colors.group()}]",
     ]
-    
+
     for grp in groups:
         sub_vars = sum(1 for c in grp.children if c.node_type == NodeType.VARIABLE)
         sub_dims = sum(1 for c in grp.children if c.node_type == NodeType.DIMENSION)
         sub_grps = sum(1 for c in grp.children if c.node_type == NodeType.GROUP)
-        
+
         info_parts = []
         if sub_vars:
             info_parts.append(f"{sub_vars} vars")
@@ -224,27 +230,28 @@ def _render_groups_section(container: VerticalScroll, groups: list[DataNode]) ->
             info_parts.append(f"{sub_dims} dims")
         if sub_grps:
             info_parts.append(f"{sub_grps} groups")
-        
+
         info = ", ".join(info_parts) if info_parts else "empty"
         lines.append(
             f"  [{Colors.group()}]{grp.name}[/{Colors.group()}] "
             f"[{Colors.muted()}]({info})[/{Colors.muted()}]"
         )
-    
+
     container.mount(Static("\n".join(lines)))
 
 
 def _render_attributes(container: VerticalScroll, node: DataNode) -> None:
     """Render node attributes section."""
+    attr_icon = NODE_ICONS.get(NodeType.ATTRIBUTE, "◆")
     lines = [
         "",
-        f"[bold {Colors.root()}]Attributes:[/bold {Colors.root()}]",
+        f"[bold {Colors.root()}]{attr_icon} Attributes:[/bold {Colors.root()}]",
     ]
-    
+
     for key, val in node.attributes.items():
         val_str = _format_attribute_value(val, max_len=60)
         lines.append(f"  [{Colors.root()}]:{key}[/{Colors.root()}] = {val_str} ;")
-    
+
     container.mount(Static("\n".join(lines)))
 
 
