@@ -5,45 +5,38 @@ from textual.widgets import Static
 from textual.app import ComposeResult
 from textual_plotext import PlotextPlot
 
+from .config import get_plot_colors
+
+
+# Viridis-like colormap (perceptually uniform, colorblind-friendly)
+VIRIDIS_COLORS = [
+    (68, 1, 84), (72, 26, 108), (71, 47, 125), (65, 68, 135), (57, 86, 140),
+    (49, 104, 142), (42, 120, 142), (35, 136, 142), (31, 152, 139), (34, 168, 132),
+    (53, 183, 121), (83, 198, 105), (122, 209, 81), (165, 219, 54), (210, 226, 27),
+    (253, 231, 37),
+]
+
 
 def _apply_colormap(data: np.ndarray) -> list[list[tuple[int, int, int]]]:
-    """Apply a blue-to-red colormap to normalized data, returning RGB tuples."""
-    # Normalize data to 0-1 range
-    data_min = np.nanmin(data)
-    data_max = np.nanmax(data)
+    """Apply viridis colormap to normalized data, returning RGB tuples."""
+    data_clean = np.nan_to_num(data, nan=0.0)
+    data_min = np.nanmin(data_clean)
+    data_max = np.nanmax(data_clean)
 
     if data_max == data_min:
-        # Constant data - use middle color
-        normalized = np.full_like(data, 0.5)
+        normalized = np.full_like(data_clean, 0.5)
     else:
-        normalized = (data - data_min) / (data_max - data_min)
+        normalized = (data_clean - data_min) / (data_max - data_min)
 
-    # Replace NaN with 0
-    normalized = np.nan_to_num(normalized, nan=0.0)
+    normalized = np.clip(normalized, 0.0, 1.0)
 
-    # Create RGB colormap: blue (cold) -> cyan -> green -> yellow -> red (hot)
-    # This is a perceptually better colormap than simple grayscale
+    n_colors = len(VIRIDIS_COLORS)
     result = []
     for row in normalized:
         rgb_row = []
         for val in row:
-            if val < 0.25:
-                # Blue to cyan
-                t = val / 0.25
-                r, g, b = 0, int(255 * t), 255
-            elif val < 0.5:
-                # Cyan to green
-                t = (val - 0.25) / 0.25
-                r, g, b = 0, 255, int(255 * (1 - t))
-            elif val < 0.75:
-                # Green to yellow
-                t = (val - 0.5) / 0.25
-                r, g, b = int(255 * t), 255, 0
-            else:
-                # Yellow to red
-                t = (val - 0.75) / 0.25
-                r, g, b = 255, int(255 * (1 - t)), 0
-            rgb_row.append((r, g, b))
+            idx = min(max(int(val * (n_colors - 1)), 0), n_colors - 1)
+            rgb_row.append(VIRIDIS_COLORS[idx])
         result.append(rgb_row)
 
     return result
@@ -52,155 +45,122 @@ def _apply_colormap(data: np.ndarray) -> list[list[tuple[int, int, int]]]:
 class DataPlot1D(PlotextPlot):
     """Widget for plotting 1D line data."""
 
-    ALLOW_FOCUS = False  # Disable mouse to prevent hover color changes
+    ALLOW_FOCUS = False
 
-    def __init__(self, data: np.ndarray, **kwargs):
+    def __init__(self, data: np.ndarray, is_dark: bool = True, width: int = 60, height: int = 15, **kwargs):
         super().__init__(**kwargs)
+        self._is_dark = is_dark
+        self._width = width
+        self._height = height
+        
+        # Handle NaN values
         if np.issubdtype(data.dtype, np.floating):
-            clean = data[~np.isnan(data)]
-            self._data = clean if len(clean) > 0 else data[:10]
+            mask = np.isfinite(data)
+            if np.any(mask):
+                self._data = data.copy()
+                self._valid_mask = mask
+            else:
+                self._data = np.zeros(min(10, len(data)))
+                self._valid_mask = np.ones(len(self._data), dtype=bool)
         else:
             self._data = data
+            self._valid_mask = np.ones(len(data), dtype=bool)
+        
+        # Set explicit size
+        self.styles.width = width
+        self.styles.height = height
 
     def on_mount(self) -> None:
         """Configure and draw the plot."""
-        self.plt.theme("dark")
-        self.plt.canvas_color((0, 0, 0))  # Pure black background
-        self.plt.axes_color((0, 0, 0))
-        self.plt.ticks_color((200, 200, 200))  # Light gray ticks
-        self.plt.title("1D Data")
-        self.plt.xlabel("Index")
-        self.plt.ylabel("Value")
-        self._draw()
+        super().on_mount()
+        colors = get_plot_colors(self._is_dark)
+        plot_bg = colors["bg"]
+        plot_fg = colors["fg"]
+        plot_line = colors.get("line", colors["accent"])
 
-    def _draw(self) -> None:
-        """Draw the line plot."""
-        self.plt.clear_data()
-        self.plt.plotsize(None, 18)
+        self.plt.theme("dark" if self._is_dark else "clear")
+        self.plt.canvas_color(plot_bg)
+        self.plt.axes_color(plot_bg)
+        self.plt.ticks_color(plot_fg)
+        
+        # Set plot size
+        self.plt.plotsize(self._width, self._height)
 
-        x = list(range(len(self._data)))
-        y = [float(v) if np.isfinite(v) else 0.0 for v in self._data]
+        valid_indices = np.where(self._valid_mask)[0]
+        x = list(valid_indices)
+        y = [float(self._data[i]) for i in valid_indices]
 
-        self.plt.plot(x, y, marker="braille", color=(0, 200, 255))  # Cyan
+        if len(x) > 0:
+            self.plt.plot(x, y, marker="braille", color=plot_line)
         self.refresh()
 
 
 class DataPlot2D(PlotextPlot):
     """Widget for plotting 2D heatmaps with custom colormap."""
 
-    ALLOW_FOCUS = False  # Disable mouse to prevent hover color changes
+    ALLOW_FOCUS = False
 
-    def __init__(self, data: np.ndarray, **kwargs):
+    def __init__(self, data: np.ndarray, is_dark: bool = True, width: int = 60, height: int = 20, **kwargs):
         super().__init__(**kwargs)
-        self._data = np.nan_to_num(data, nan=0.0)
+        self._is_dark = is_dark
+        self._width = width
+        self._height = height
+        
+        # Handle NaN values and ensure we have a proper copy
+        data = np.array(data, copy=True)
+        if np.issubdtype(data.dtype, np.floating):
+            nan_mask = np.isnan(data)
+            if np.any(nan_mask):
+                valid_mean = np.nanmean(data) if np.any(~nan_mask) else 0.0
+                self._data = np.where(nan_mask, valid_mean, data)
+            else:
+                self._data = data
+        else:
+            self._data = data.astype(float)
+        
+        # Set explicit size
+        self.styles.width = width
+        self.styles.height = height
 
     def on_mount(self) -> None:
         """Configure and draw the heatmap."""
-        self.plt.theme("dark")
-        self.plt.canvas_color((0, 0, 0))  # Pure black background
-        self.plt.axes_color((0, 0, 0))
-        self.plt.ticks_color((200, 200, 200))  # Light gray ticks
-        self.plt.title("2D Heatmap")
-        self._draw()
+        super().on_mount()
+        self._draw_plot()
 
-    def _draw(self) -> None:
-        """Draw the heatmap with custom colormap."""
-        self.plt.clear_data()
-        self.plt.plotsize(None, 18)
+    def _draw_plot(self) -> None:
+        """Draw the heatmap plot."""
+        colors = get_plot_colors(self._is_dark)
+        plot_bg = colors["bg"]
+        plot_fg = colors["fg"]
 
-        # Apply colormap to get RGB matrix
+        self.plt.clear_figure()
+        self.plt.theme("dark" if self._is_dark else "clear")
+        self.plt.canvas_color(plot_bg)
+        self.plt.axes_color(plot_bg)
+        self.plt.ticks_color(plot_fg)
+        
+        # Set plot size to match data aspect ratio
+        self.plt.plotsize(self._width, self._height)
+
         rgb_matrix = _apply_colormap(self._data)
-
-        # Plot with RGB colors
         self.plt.matrix_plot(rgb_matrix)
-
-        # Add axis labels with data range
-        rows, cols = self._data.shape
-        data_min = np.nanmin(self._data)
-        data_max = np.nanmax(self._data)
-        self.plt.xlabel(f"Col 0-{cols-1} | Range: [{data_min:.3g}, {data_max:.3g}]")
-        self.plt.ylabel(f"Row 0-{rows-1}")
-
         self.refresh()
 
-
-class DataVisualizer:
-    """Creates visualization widgets for numpy arrays."""
-
-    MAX_PLOT_POINTS_1D = 500
-    MAX_HEATMAP_ROWS = 40
-    MAX_HEATMAP_COLS = 60
-
-    @staticmethod
-    def create_visualization(data: np.ndarray, container_width: int = 60) -> ComposeResult:
-        """Create visualization widgets based on data dimensions."""
-        if data.ndim == 1:
-            yield from DataVisualizer._create_line_plot(data)
-        elif data.ndim == 2:
-            yield from DataVisualizer._create_heatmap(data)
+    def update_data(self, data: np.ndarray) -> None:
+        """Update the plot with new data."""
+        # Handle NaN values and ensure we have a proper copy
+        data = np.array(data, copy=True)
+        if np.issubdtype(data.dtype, np.floating):
+            nan_mask = np.isnan(data)
+            if np.any(nan_mask):
+                valid_mean = np.nanmean(data) if np.any(~nan_mask) else 0.0
+                self._data = np.where(nan_mask, valid_mean, data)
+            else:
+                self._data = data
         else:
-            yield Static(f"[dim]Visualization not available for {data.ndim}D data[/dim]")
-
-    @staticmethod
-    def _create_line_plot(data: np.ndarray) -> ComposeResult:
-        """Create a line plot for 1D data with intelligent downsampling."""
-        # Remove NaN values
-        if data.dtype.kind == 'f':
-            clean_data = data[~np.isnan(data)]
-        else:
-            clean_data = data
-
-        if clean_data.size == 0:
-            yield Static("[dim]No valid data to plot[/dim]")
-            return
-
-        # Downsample if needed
-        max_points = DataVisualizer.MAX_PLOT_POINTS_1D
-        if len(clean_data) > max_points:
-            indices = np.linspace(0, len(clean_data) - 1, max_points, dtype=int)
-            plot_data = clean_data[indices]
-            info = f"[dim]({max_points} of {len(clean_data):,} points)[/dim]"
-        else:
-            plot_data = clean_data
-            info = f"[dim]({len(clean_data):,} points)[/dim]"
-
-        yield Static(f"[bold cyan]📊 Line Plot[/bold cyan] {info}")
-        yield DataPlot1D(plot_data)
-
-        # Statistics
-        stats = f"Range: [{clean_data.min():.4g}, {clean_data.max():.4g}] | "
-        stats += f"Mean: {clean_data.mean():.4g} | Std: {clean_data.std():.4g}"
-        yield Static(f"[dim]{stats}[/dim]")
-
-    @staticmethod
-    def _create_heatmap(data: np.ndarray) -> ComposeResult:
-        """Create a heatmap for 2D data with efficient downsampling."""
-        rows, cols = data.shape
-        max_rows = DataVisualizer.MAX_HEATMAP_ROWS
-        max_cols = DataVisualizer.MAX_HEATMAP_COLS
-
-        if rows > max_rows or cols > max_cols:
-            # Efficient downsampling using stride and reshape
-            row_step = max(1, rows // max_rows)
-            col_step = max(1, cols // max_cols)
-
-            # Simple strided sampling (fast)
-            sampled = data[::row_step, ::col_step]
-
-            # Ensure we don't exceed max dimensions
-            sampled = sampled[:max_rows, :max_cols]
-            info = f"[dim]({sampled.shape[0]}×{sampled.shape[1]} of {rows}×{cols})[/dim]"
-        else:
-            sampled = data
-            info = f"[dim]({rows}×{cols})[/dim]"
-
-        yield Static(f"[bold cyan]📊 2D Heatmap[/bold cyan] {info}")
-        yield DataPlot2D(sampled)
-
-        # Range info
-        data_min = np.nanmin(sampled)
-        data_max = np.nanmax(sampled)
-        yield Static(f"[dim]Range: [{data_min:.4g}, {data_max:.4g}][/dim]")
+            self._data = data.astype(float)
+        
+        self._draw_plot()
 
 
 def format_statistics(data: np.ndarray) -> str:
@@ -212,18 +172,18 @@ def format_statistics(data: np.ndarray) -> str:
     valid_count = np.count_nonzero(~np.isnan(data)) if is_float else data.size
     nan_count = data.size - valid_count
 
-    lines = ["[cyan]Statistics:[/cyan]"]
-    lines.append(f"  [dim]▸ Min:[/dim]  {np.nanmin(data):.6g}")
-    lines.append(f"  [dim]▸ Max:[/dim]  {np.nanmax(data):.6g}")
-    lines.append(f"  [dim]▸ Mean:[/dim] {np.nanmean(data):.6g}")
+    lines = ["[bold]Statistics:[/bold]"]
+    lines.append(f"  ▸ Min:  {np.nanmin(data):.6g}")
+    lines.append(f"  ▸ Max:  {np.nanmax(data):.6g}")
+    lines.append(f"  ▸ Mean: {np.nanmean(data):.6g}")
 
     if data.size > 1:
-        lines.append(f"  [dim]▸ Std:[/dim]  {np.nanstd(data):.6g}")
+        lines.append(f"  ▸ Std:  {np.nanstd(data):.6g}")
 
     if nan_count > 0:
-        lines.append(f"  [dim]▸ NaN:[/dim]  {nan_count:,} ({nan_count/data.size*100:.1f}%)")
+        lines.append(f"  ▸ NaN:  {nan_count:,} ({nan_count/data.size*100:.1f}%)")
 
-    lines.append(f"  [dim]▸ Valid:[/dim] {valid_count:,}")
+    lines.append(f"  ▸ Valid: {valid_count:,}")
 
     return "\n".join(lines) + "\n"
 
@@ -231,7 +191,7 @@ def format_statistics(data: np.ndarray) -> str:
 def format_sample_values(data: np.ndarray, max_lines: int = 8) -> str:
     """Format sample values showing first and last elements."""
     if data.size == 0:
-        return "[dim](empty array)[/dim]\n"
+        return "(empty array)\n"
 
     if data.ndim == 1:
         return _format_1d_samples(data, max_lines)
@@ -247,10 +207,10 @@ def _format_1d_samples(data: np.ndarray, max_lines: int) -> str:
         return "\n".join(f"  [{i}] {val}" for i, val in enumerate(data)) + "\n"
 
     n = max_lines // 2
-    lines = ["  [dim]First values:[/dim]"]
+    lines = ["  First values:"]
     lines.extend(f"    [{i}] {data[i]}" for i in range(n))
-    lines.append(f"  [dim]... ({data.size - 2*n} more) ...[/dim]")
-    lines.append("  [dim]Last values:[/dim]")
+    lines.append(f"  ... ({data.size - 2*n} more) ...")
+    lines.append("  Last values:")
     lines.extend(f"    [{i}] {data[i]}" for i in range(data.size - n, data.size))
     return "\n".join(lines) + "\n"
 
@@ -268,14 +228,14 @@ def _format_2d_samples(data: np.ndarray, max_lines: int) -> str:
             result.append("  " + vals + (" ..." if cols > show_cols else ""))
         return result
 
-    lines = [f"  [dim]Top-left ({show_rows}×{show_cols}):[/dim]"]
+    lines = [f"  Top-left ({show_rows}×{show_cols}):"]
     lines.extend(format_rows(0, show_rows))
 
     if rows > show_rows * 2:
-        lines.append(f"  [dim]... {rows - show_rows * 2} rows omitted ...[/dim]")
+        lines.append(f"  ... {rows - show_rows * 2} rows omitted ...")
 
     if rows > show_rows:
-        lines.append(f"  [dim]Bottom-left ({show_rows}×{show_cols}):[/dim]")
+        lines.append(f"  Bottom-left ({show_rows}×{show_cols}):")
         lines.extend(format_rows(max(0, rows - show_rows), rows))
 
     return "\n".join(lines) + "\n"
@@ -284,14 +244,14 @@ def _format_2d_samples(data: np.ndarray, max_lines: int) -> str:
 def _format_nd_samples(data: np.ndarray, max_lines: int) -> str:
     """Format multi-dimensional array samples."""
     n = max_lines // 2
-    lines = [f"  [dim]First {n} values (from {data.ndim}D array):[/dim]"]
+    lines = [f"  First {n} values (from {data.ndim}D array):"]
     lines.extend(f"    {data.flat[i]}" for i in range(min(n, data.size)))
 
     if data.size > max_lines:
-        lines.append(f"  [dim]... {data.size - max_lines} values omitted ...[/dim]")
-        lines.append(f"  [dim]Last {n} values:[/dim]")
+        lines.append(f"  ... {data.size - max_lines} values omitted ...")
+        lines.append(f"  Last {n} values:")
         lines.extend(f"    {data.flat[i]}" for i in range(max(0, data.size - n), data.size))
 
     shape_str = " × ".join(f"{s:,}" for s in data.shape)
-    lines.append(f"  [dim](Shape: {shape_str}, Total: {data.size:,})[/dim]")
+    lines.append(f"  (Shape: {shape_str}, Total: {data.size:,})")
     return "\n".join(lines) + "\n"
