@@ -1,14 +1,38 @@
 """Data file readers for netCDF, HDF5, and other formats."""
 
-import os
 from pathlib import Path
-from typing import Optional, Union
-
-import h5py
-import numpy as np
-import xarray as xr
+from typing import Union
 
 from .models import DataNode, DatasetInfo, NodeType
+
+# Defer heavy imports until needed
+_xr = None
+_h5py = None
+_nc = None
+
+
+def _get_xarray():
+    global _xr
+    if _xr is None:
+        import xarray
+        _xr = xarray
+    return _xr
+
+
+def _get_h5py():
+    global _h5py
+    if _h5py is None:
+        import h5py
+        _h5py = h5py
+    return _h5py
+
+
+def _get_netcdf4():
+    global _nc
+    if _nc is None:
+        import netCDF4
+        _nc = netCDF4
+    return _nc
 
 
 class DataReader:
@@ -60,6 +84,7 @@ class DataReader:
     @classmethod
     def _read_with_xarray(cls, file_path: Path) -> DatasetInfo:
         """Read file using xarray."""
+        xr = _get_xarray()
         ds = xr.open_dataset(file_path)
 
         # Create root node
@@ -161,7 +186,7 @@ class DataReader:
     @classmethod
     def _read_with_netcdf4(cls, file_path: Path) -> DatasetInfo:
         """Read file using netCDF4 (handles groups and dimensions better)."""
-        import netCDF4 as nc
+        nc = _get_netcdf4()
 
         root = DataNode(
             name=file_path.name,
@@ -193,7 +218,10 @@ class DataReader:
                     name=dim_name,
                     node_type=NodeType.DIMENSION,
                     path=f"{path}{dim_name}",
-                    metadata={"size": len(dim_obj)},
+                    metadata={
+                        "size": len(dim_obj),
+                        "unlimited": dim_obj.isunlimited(),
+                    },
                     parent=parent_node
                 )
                 parent_node.add_child(dim_node)
@@ -230,6 +258,7 @@ class DataReader:
     @classmethod
     def _read_with_h5py(cls, file_path: Path) -> DatasetInfo:
         """Read HDF5 file using h5py."""
+        h5py = _get_h5py()
         root = DataNode(
             name=file_path.name,
             node_type=NodeType.ROOT,
@@ -252,8 +281,9 @@ class DataReader:
         )
 
     @classmethod
-    def _read_h5_group(cls, h5_obj: Union[h5py.File, h5py.Group], parent_node: DataNode, path: str) -> None:
+    def _read_h5_group(cls, h5_obj, parent_node: DataNode, path: str) -> None:
         """Recursively read HDF5 group structure."""
+        h5py = _get_h5py()
         for key in h5_obj.keys():
             item = h5_obj[key]
             item_path = f"{path}{key}" if path.endswith("/") else f"{path}/{key}"
