@@ -117,8 +117,6 @@ def _create_slice_controls(
     slice_indices: list
 ) -> list:
     """Create slice control widgets for 3D+ data."""
-    from rich.text import Text
-
     widgets = []
     ndim = data.ndim
 
@@ -132,7 +130,8 @@ def _create_slice_controls(
         dim_size = data.shape[dim_idx]
 
         widgets.append(Static(f"{dim_name}:", classes="dim-label"))
-        options = [(Text(str(j)), j) for j in range(dim_size)]
+        # Create options as (prompt, value) tuples with string prompts
+        options = [(str(j), j) for j in range(dim_size)]
         widgets.append(
             Select(
                 options,
@@ -165,6 +164,8 @@ class PlotScreen(ModalScreen[None]):
         Binding("q", "close", "Close"),
         Binding("p", "toggle_view", "Toggle Plot/Array"),
         Binding("d", "toggle_view", "Toggle Plot/Array"),
+        Binding("[", "decrement_slice", "Prev Slice", show=False),
+        Binding("]", "increment_slice", "Next Slice", show=False),
     ]
 
     loading: reactive[bool] = reactive(False)
@@ -416,3 +417,50 @@ class PlotScreen(ModalScreen[None]):
                 tabs.active = "tab-plot"
         except Exception as e:
             logger.debug(f"Failed to toggle view: {e}")
+
+    def action_decrement_slice(self) -> None:
+        """Decrement the value of the focused Select widget (or first one if none focused)."""
+        if self._original_data.ndim <= 2:
+            return  # No slice controls for 1D/2D data
+
+        # Try to find a focused Select widget
+        try:
+            focused = self.focused
+            if isinstance(focused, Select) and focused.id and focused.id.startswith("slice-"):
+                select_widget = focused
+            else:
+                # If no Select is focused, use the first one
+                select_widget = self.query_one("#slice-0", Select)
+        except Exception:
+            return
+
+        # Get current value and decrement
+        current_value = select_widget.value
+        if current_value is not None and current_value > 0:
+            select_widget.value = current_value - 1
+
+    def action_increment_slice(self) -> None:
+        """Increment the value of the focused Select widget (or first one if none focused)."""
+        if self._original_data.ndim <= 2:
+            return  # No slice controls for 1D/2D data
+
+        # Try to find a focused Select widget
+        try:
+            focused = self.focused
+            if isinstance(focused, Select) and focused.id and focused.id.startswith("slice-"):
+                select_widget = focused
+            else:
+                # If no Select is focused, use the first one
+                select_widget = self.query_one("#slice-0", Select)
+        except Exception:
+            return
+
+        # Get current value and dimension size
+        current_value = select_widget.value
+        if current_value is not None:
+            # Extract dimension index from widget id
+            dim_idx = int(select_widget.id.split("-")[1])
+            max_value = self._original_data.shape[dim_idx] - 1
+            
+            if current_value < max_value:
+                select_widget.value = current_value + 1

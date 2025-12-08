@@ -1,16 +1,18 @@
 /* ========================================
-   TANOTLY - USING TEXTUAL DESIGN SYSTEM
+   TANOTLY - TEXTUAL DESIGN SYSTEM
    ========================================
    
    This stylesheet uses Textual's built-in design system variables
-   for automatic light/dark theme support.
+   for automatic theme support. All themes are managed through
+   ThemeManager in config.py.
    
    Design system reference: https://textual.textualize.io/guide/design/
    
    ======================================== */
 
+
 /* ========================================
-   GLOBAL STYLES
+   GLOBAL & LAYOUT
    ======================================== */
 
 TanotlyApp {
@@ -18,13 +20,11 @@ TanotlyApp {
     color: $text;
 }
 
-/* Main layout */
 #main {
     height: 1fr;
     background: $surface;
 }
 
-/* Status bar */
 #status-bar {
     height: 1;
     content-align: left middle;
@@ -33,24 +33,16 @@ TanotlyApp {
     color: $text;
 }
 
-/* Tree panel (left) */
+
+/* ========================================
+   TREE PANEL (LEFT)
+   ======================================== */
+
 #tree-container {
     width: 50%;
     border-right: solid $primary;
     background: $surface;
 }
-
-/* Details panel (right) */
-#detail-container {
-    width: 50%;
-    padding: 1;
-    scrollbar-gutter: stable;
-    background: $surface;
-}
-
-/* ========================================
-   TREE WIDGET
-   ======================================== */
 
 Tree {
     height: 100%;
@@ -74,9 +66,17 @@ Tree:focus > .tree--cursor {
     background: $boost;
 }
 
+
 /* ========================================
-   SCROLLABLE CONTAINERS
+   DETAILS PANEL (RIGHT)
    ======================================== */
+
+#detail-container {
+    width: 50%;
+    padding: 1;
+    scrollbar-gutter: stable;
+    background: $surface;
+}
 
 VerticalScroll {
     height: 100%;
@@ -87,12 +87,6 @@ VerticalScroll {
     scrollbar-color-active: $primary-lighten-2;
 }
 
-ScrollableContainer {
-    scrollbar-background: $panel;
-    scrollbar-color: $primary;
-    scrollbar-color-hover: $primary-lighten-1;
-    scrollbar-color-active: $primary-lighten-2;
-}
 
 /* ========================================
    PLOT SCREEN
@@ -120,7 +114,20 @@ PlotScreen {
     dock: top;
 }
 
-/* Slice controls */
+#plot-footer {
+    height: 1;
+    width: 100%;
+    text-align: center;
+    background: $panel;
+    color: $text-muted;
+    dock: bottom;
+}
+
+
+/* ========================================
+   PLOT CONTROLS
+   ======================================== */
+
 #controls-row {
     height: 3;
     width: 100%;
@@ -137,7 +144,6 @@ PlotScreen {
     color: $text-muted;
 }
 
-/* Slice Select widgets - use default Textual styling with color overrides */
 #controls-row Select {
     width: 8;
     margin: 0 1 0 0;
@@ -151,7 +157,11 @@ PlotScreen {
     color: $accent;
 }
 
-/* Plot tabs */
+
+/* ========================================
+   PLOT TABS & VIEWS
+   ======================================== */
+
 TabbedContent, #view-tabs {
     height: 1fr;
     width: 1fr;
@@ -170,7 +180,36 @@ TabPane {
     background: $surface;
 }
 
-/* Plot view */
+Tabs {
+    background: $panel;
+    height: 3;
+}
+
+Tab {
+    background: $panel;
+    color: $text-muted;
+    padding: 0 2;
+}
+
+Tab:hover {
+    background: $boost;
+    color: $text;
+}
+
+Tab.-active {
+    background: $boost;
+    color: $accent;
+}
+
+Underline {
+    background: $accent;
+}
+
+
+/* ========================================
+   PLOT VIEW
+   ======================================== */
+
 #plot-view {
     height: 1fr;
     width: 1fr;
@@ -202,7 +241,11 @@ DataPlot1D, DataPlot2D {
     color: $text;
 }
 
-/* Table view */
+
+/* ========================================
+   ARRAY TABLE VIEW
+   ======================================== */
+
 #table-view {
     height: 1fr;
     padding: 0;
@@ -213,59 +256,6 @@ DataPlot1D, DataPlot2D {
     height: 1fr;
     background: $surface;
 }
-
-#plot-footer {
-    height: 1;
-    width: 100%;
-    text-align: center;
-    background: $panel;
-    color: $text-muted;
-    dock: bottom;
-}
-
-/* ========================================
-   DATA TABLE SCREEN
-   ======================================== */
-
-DataTableScreen {
-    align: center middle;
-    background: $surface 90%;
-}
-
-#table-container {
-    width: 90%;
-    height: 85%;
-    border: solid $primary;
-    background: $surface;
-}
-
-#table-title {
-    height: 1;
-    text-align: center;
-    text-style: bold;
-    width: 100%;
-    dock: top;
-    background: $panel;
-    color: $accent;
-}
-
-#table-footer {
-    height: 1;
-    text-align: center;
-    width: 100%;
-    dock: bottom;
-    background: $panel;
-    color: $text-muted;
-}
-
-#data-table {
-    height: 1fr;
-    background: $surface;
-}
-
-/* ========================================
-   DATA TABLE WIDGET
-   ======================================== */
 
 DataTable {
     background: $surface;
@@ -287,6 +277,7 @@ DataTable > .datatable--cursor {
     color: $accent;
 }
 
+
 /* ========================================
    SELECT WIDGET
    ======================================== */
@@ -294,22 +285,11 @@ DataTable > .datatable--cursor {
 Select {
     width: 10;
     height: 3;
-    background: $panel;
-    color: $text;
-    border: solid $primary;
 }
 
 Select > SelectCurrent {
     width: 100%;
-    background: $panel;
-    color: $text;
-    content-align: center middle;
     padding: 0 1;
-}
-
-Select:focus > SelectCurrent {
-    background: $boost;
-    color: $accent;
 }
 
 SelectOverlay {
@@ -318,50 +298,8 @@ SelectOverlay {
     max-width: 20;
     height: auto;
     max-height: 12;
-    background: $panel;
-    color: $text;
-    border: solid $primary;
 }
 
-SelectOverlay > OptionList {
-    background: $panel;
-    color: $text;
-    padding: 0;
-}
-
-SelectOverlay > OptionList > .option-list--option-highlighted {
-    background: $boost;
-    color: $accent;
-}
-
-/* ========================================
-   TABS
-   ======================================== */
-
-Tabs {
-    background: $panel;
-    height: 3;
-}
-
-Tab {
-    background: $panel;
-    color: $text-muted;
-    padding: 0 2;
-}
-
-Tab:hover {
-    background: $boost;
-    color: $text;
-}
-
-Tab.-active {
-    background: $boost;
-    color: $accent;
-}
-
-Underline {
-    background: $accent;
-}
 
 /* ========================================
    FOOTER
@@ -384,6 +322,7 @@ FooterKey .footer-key--description {
     color: $text-muted;
     background: $panel;
 }
+
 
 /* ========================================
    STATIC TEXT
