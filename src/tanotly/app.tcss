@@ -1,0 +1,697 @@
+/* ========================================
+   TANOTLY - COLOR PALETTE
+   ========================================
+   
+   EDIT THESE COLORS TO CUSTOMIZE THE THEME
+   
+   ======================================== */
+
+/* ------------------------------------------------------------------
+   DARK THEME COLORS
+   ------------------------------------------------------------------ */
+
+/* Background colors */
+$dark-bg:               #282828;   /* Very dark gray - main app background */
+$dark-bg-alt:           #3c3836;   /* Dark gray - panels, headers, status bar */
+$dark-bg-highlight:     #504945;   /* Medium dark gray - selected items, hover states */
+
+/* Text colors */
+$dark-fg:               #ebdbb2;   /* Light beige - primary text color */
+$dark-fg-muted:         #a89984;   /* Medium beige - secondary/dimmed text */
+$dark-fg-dim:           #665c54;   /* Dark beige - guides, subtle borders */
+
+/* Accent colors */
+$dark-accent:           #fabd2f;   /* Bright yellow - selections, highlights, active elements */
+$dark-success:          #b8bb26;   /* Lime green - positive indicators, table headers */
+$dark-warning:          #d65d0e;   /* Orange - warnings, footer highlights */
+
+/* Scrollbar colors */
+$dark-scrollbar-bg:     #3c3836;   /* Dark gray - scrollbar track */
+$dark-scrollbar:        #665c54;   /* Dark beige - scrollbar handle */
+$dark-scrollbar-hover:  #928374;   /* Medium beige - scrollbar on hover */
+$dark-scrollbar-active: #a89984;   /* Light beige - scrollbar when active */
+
+/* ------------------------------------------------------------------
+   LIGHT THEME COLORS
+   ------------------------------------------------------------------ */
+
+/* Background colors */
+$light-bg:               #fbf1c7;   /* Cream - main app background */
+$light-bg-alt:           #ebdbb2;   /* Light tan - panels, headers, status bar */
+$light-bg-highlight:     #d5c4a1;   /* Medium tan - selected items, hover states */
+
+/* Text colors */
+$light-fg:               #3c3836;   /* Very dark gray - primary text color */
+$light-fg-muted:         #7c6f64;   /* Medium gray - secondary/dimmed text */
+$light-fg-dim:           #bdae93;   /* Light tan - guides, subtle borders */
+
+/* Accent colors */
+$light-accent:           #b57614;   /* Dark brown - selections, highlights, active elements */
+$light-success:          #79740e;   /* Dark olive green - positive indicators, table headers */
+$light-warning:          #af3a03;   /* Dark red - warnings, footer highlights */
+$light-error:            #9d0006;   /* Deep red - error states, critical alerts */
+$light-info:             #076678;   /* Dark teal - informational messages */
+
+/* Scrollbar colors */
+$light-scrollbar-bg:     #ebdbb2;   /* Light tan - scrollbar track */
+$light-scrollbar:        #bdae93;   /* Light tan - scrollbar handle */
+$light-scrollbar-hover:  #a89984;   /* Medium beige - scrollbar on hover */
+$light-scrollbar-active: #7c6f64;   /* Medium gray - scrollbar when active */
+
+
+/* ========================================
+   DARK THEME STYLES (default)
+   ======================================== */
+
+TanotlyApp {
+    background: $dark-bg;
+    color: $dark-fg;
+}
+
+/* Main layout */
+#main {
+    height: 1fr;
+    background: $dark-bg;
+}
+
+/* Status bar */
+#status-bar {
+    height: 1;
+    content-align: left middle;
+    padding-left: 1;
+    background: $dark-bg-alt;
+    color: $dark-fg;
+}
+
+/* Tree panel (left) */
+#tree-container {
+    width: 50%;
+    border-right: solid $dark-bg-highlight;
+    background: $dark-bg;
+}
+
+/* Details panel (right) */
+#detail-container {
+    width: 50%;
+    padding: 1;
+    scrollbar-gutter: stable;
+    background: $dark-bg;
+}
+
+/* ========================================
+   TREE WIDGET
+   ======================================== */
+
+Tree {
+    height: 100%;
+    scrollbar-gutter: stable;
+    background: $dark-bg;
+    scrollbar-background: $dark-scrollbar-bg;
+    scrollbar-color: $dark-scrollbar;
+    scrollbar-color-hover: $dark-scrollbar-hover;
+    scrollbar-color-active: $dark-scrollbar-active;
+    overflow-x: hidden;
+}
+
+Tree > .tree--guides {
+    color: $dark-fg-dim;
+}
+
+Tree > .tree--cursor {
+    background: $dark-bg-alt;
+}
+
+Tree:focus > .tree--cursor {
+    background: $dark-bg-highlight;
+}
+
+/* ========================================
+   SCROLLABLE CONTAINERS
+   ======================================== */
+
+VerticalScroll {
+    height: 100%;
+    overflow-y: auto;
+    scrollbar-background: $dark-scrollbar-bg;
+    scrollbar-color: $dark-scrollbar;
+    scrollbar-color-hover: $dark-scrollbar-hover;
+    scrollbar-color-active: $dark-scrollbar-active;
+}
+
+ScrollableContainer {
+    scrollbar-background: $dark-scrollbar-bg;
+    scrollbar-color: $dark-scrollbar;
+    scrollbar-color-hover: $dark-scrollbar-hover;
+    scrollbar-color-active: $dark-scrollbar-active;
+}
+
+/* ========================================
+   PLOT SCREEN
+   ======================================== */
+
+PlotScreen {
+    align: center middle;
+    background: $dark-bg 90%;
+}
+
+#plot-container {
+    width: 90%;
+    height: 90%;
+    background: $dark-bg;
+    border: solid $dark-bg-highlight;
+}
+
+#plot-title {
+    width: 100%;
+    height: 1;
+    text-style: bold;
+    content-align: center middle;
+    background: $dark-bg-alt;
+    color: $dark-accent;
+    dock: top;
+}
+
+/* Slice controls */
+#controls-row {
+    height: 3;
+    width: 100%;
+    padding: 0 1;
+    background: $dark-bg-alt;
+    align: left middle;
+}
+
+.dim-label {
+    width: auto;
+    height: 3;
+    padding: 0 1;
+    content-align: center middle;
+    color: $dark-fg-muted;
+}
+
+/* Slice Select widgets - use default Textual styling with color overrides */
+#controls-row Select {
+    width: 8;
+    margin: 0 1 0 0;
+}
+
+#controls-row SelectCurrent {
+    color: $dark-accent;
+}
+
+#controls-row Select:focus SelectCurrent {
+    color: $dark-accent;
+}
+
+/* Plot tabs */
+TabbedContent, #view-tabs {
+    height: 1fr;
+    width: 1fr;
+    background: $dark-bg;
+}
+
+ContentSwitcher {
+    height: 1fr;
+    width: 1fr;
+}
+
+TabPane {
+    height: 1fr;
+    width: 1fr;
+    padding: 0;
+    background: $dark-bg;
+}
+
+/* Plot view */
+#plot-view {
+    height: 1fr;
+    width: 1fr;
+    align: center middle;
+    background: $dark-bg;
+}
+
+#plot-content {
+    width: auto;
+    height: auto;
+    align: center middle;
+}
+
+#plot-widget {
+    width: auto;
+    height: auto;
+}
+
+DataPlot1D, DataPlot2D {
+    width: auto;
+    height: auto;
+}
+
+#colorbar-legend {
+    width: auto;
+    height: 1;
+    text-align: center;
+    margin-top: 1;
+    color: $dark-fg;
+}
+
+/* Table view */
+#table-view {
+    height: 1fr;
+    padding: 0;
+    background: $dark-bg;
+}
+
+#array-table {
+    height: 1fr;
+    background: $dark-bg;
+}
+
+#plot-footer {
+    height: 1;
+    width: 100%;
+    text-align: center;
+    background: $dark-bg-alt;
+    color: $dark-fg-muted;
+    dock: bottom;
+}
+
+/* ========================================
+   DATA TABLE SCREEN
+   ======================================== */
+
+DataTableScreen {
+    align: center middle;
+    background: $dark-bg 90%;
+}
+
+#table-container {
+    width: 90%;
+    height: 85%;
+    border: solid $dark-bg-highlight;
+    background: $dark-bg;
+}
+
+#table-title {
+    height: 1;
+    text-align: center;
+    text-style: bold;
+    width: 100%;
+    dock: top;
+    background: $dark-bg-alt;
+    color: $dark-accent;
+}
+
+#table-footer {
+    height: 1;
+    text-align: center;
+    width: 100%;
+    dock: bottom;
+    background: $dark-bg-alt;
+    color: $dark-fg-muted;
+}
+
+#data-table {
+    height: 1fr;
+    background: $dark-bg;
+}
+
+/* ========================================
+   DATA TABLE WIDGET
+   ======================================== */
+
+DataTable {
+    background: $dark-bg;
+    color: $dark-fg;
+    scrollbar-background: $dark-scrollbar-bg;
+    scrollbar-color: $dark-scrollbar;
+    scrollbar-color-hover: $dark-scrollbar-hover;
+    scrollbar-color-active: $dark-scrollbar-active;
+}
+
+DataTable > .datatable--header {
+    text-style: bold;
+    background: $dark-bg-alt;
+    color: $dark-success;
+}
+
+DataTable > .datatable--cursor {
+    background: $dark-bg-highlight;
+    color: $dark-accent;
+}
+
+/* ========================================
+   SELECT WIDGET
+   ======================================== */
+
+Select {
+    width: 10;
+    height: 3;
+    background: $dark-bg-alt;
+    color: $dark-fg;
+    border: solid $dark-fg-dim;
+}
+
+Select > SelectCurrent {
+    width: 100%;
+    background: $dark-bg-alt;
+    color: $dark-fg;
+    content-align: center middle;
+    padding: 0 1;
+}
+
+Select:focus > SelectCurrent {
+    background: $dark-bg-highlight;
+    color: $dark-accent;
+}
+
+SelectOverlay {
+    width: auto;
+    min-width: 8;
+    max-width: 20;
+    height: auto;
+    max-height: 12;
+    background: $dark-bg-alt;
+    color: $dark-fg;
+    border: solid $dark-bg-highlight;
+}
+
+SelectOverlay > OptionList {
+    background: $dark-bg-alt;
+    color: $dark-fg;
+    padding: 0;
+}
+
+SelectOverlay > OptionList > .option-list--option-highlighted {
+    background: $dark-bg-highlight;
+    color: $dark-accent;
+}
+
+/* ========================================
+   TABS
+   ======================================== */
+
+Tabs {
+    background: $dark-bg-alt;
+    height: 3;
+}
+
+Tab {
+    background: $dark-bg-alt;
+    color: $dark-fg-muted;
+    padding: 0 2;
+}
+
+Tab:hover {
+    background: $dark-bg-highlight;
+    color: $dark-fg;
+}
+
+Tab.-active {
+    background: $dark-bg-highlight;
+    color: $dark-accent;
+}
+
+Underline {
+    background: $dark-accent;
+}
+
+/* ========================================
+   FOOTER
+   ======================================== */
+
+Footer {
+    background: $dark-bg-alt;
+}
+
+FooterKey {
+    background: $dark-bg-alt;
+}
+
+FooterKey .footer-key--key {
+    color: $dark-accent;
+    background: $dark-bg-highlight;
+}
+
+FooterKey .footer-key--description {
+    color: $dark-fg-muted;
+    background: $dark-bg-alt;
+}
+
+/* ========================================
+   STATIC TEXT
+   ======================================== */
+
+Static {
+    background: transparent;
+    color: $dark-fg;
+}
+
+
+/* ========================================
+   LIGHT THEME OVERRIDES
+   ======================================== */
+
+TanotlyApp.light-theme {
+    background: $light-bg;
+    color: $light-fg;
+}
+
+.light-theme #main {
+    background: $light-bg;
+}
+
+.light-theme #status-bar {
+    background: $light-bg-alt;
+    color: $light-fg;
+}
+
+.light-theme #tree-container {
+    border-right: solid $light-bg-highlight;
+    background: $light-bg;
+}
+
+.light-theme #detail-container {
+    background: $light-bg;
+}
+
+/* Light theme - Tree */
+.light-theme Tree {
+    background: $light-bg;
+    scrollbar-background: $light-scrollbar-bg;
+    scrollbar-color: $light-scrollbar;
+    scrollbar-color-hover: $light-scrollbar-hover;
+    scrollbar-color-active: $light-scrollbar-active;
+}
+
+.light-theme Tree > .tree--guides {
+    color: $light-fg-dim;
+}
+
+.light-theme Tree > .tree--cursor {
+    background: $light-bg-alt;
+}
+
+.light-theme Tree:focus > .tree--cursor {
+    background: $light-bg-highlight;
+}
+
+/* Light theme - Scrollable */
+.light-theme VerticalScroll {
+    scrollbar-background: $light-scrollbar-bg;
+    scrollbar-color: $light-scrollbar;
+    scrollbar-color-hover: $light-scrollbar-hover;
+    scrollbar-color-active: $light-scrollbar-active;
+}
+
+.light-theme ScrollableContainer {
+    scrollbar-background: $light-scrollbar-bg;
+    scrollbar-color: $light-scrollbar;
+    scrollbar-color-hover: $light-scrollbar-hover;
+    scrollbar-color-active: $light-scrollbar-active;
+}
+
+/* Light theme - Plot screen */
+.light-theme PlotScreen {
+    background: $light-bg 90%;
+}
+
+.light-theme #plot-container {
+    border: solid $light-bg-highlight;
+    background: $light-bg;
+}
+
+.light-theme #plot-title {
+    background: $light-bg-alt;
+    color: $light-accent;
+}
+
+.light-theme #controls-row {
+    background: $light-bg-alt;
+}
+
+.light-theme .dim-label {
+    color: $light-fg-muted;
+}
+
+.light-theme #controls-row Select {
+    background: $light-bg-highlight;
+    border: solid $light-fg-dim;
+}
+
+.light-theme #controls-row Select > SelectCurrent {
+    background: $light-bg-highlight;
+    color: $light-accent;
+}
+
+.light-theme TabbedContent, .light-theme #view-tabs {
+    background: $light-bg;
+}
+
+.light-theme TabPane {
+    background: $light-bg;
+}
+
+.light-theme #plot-view {
+    background: $light-bg;
+}
+
+.light-theme #colorbar-legend {
+    color: $light-fg;
+}
+
+.light-theme #table-view {
+    background: $light-bg;
+}
+
+.light-theme #array-table {
+    background: $light-bg;
+}
+
+.light-theme #plot-footer {
+    background: $light-bg-alt;
+    color: $light-fg-muted;
+}
+
+/* Light theme - Data table screen */
+.light-theme DataTableScreen {
+    background: $light-bg 90%;
+}
+
+.light-theme #table-container {
+    border: solid $light-bg-highlight;
+    background: $light-bg;
+}
+
+.light-theme #table-title {
+    background: $light-bg-alt;
+    color: $light-accent;
+}
+
+.light-theme #table-footer {
+    background: $light-bg-alt;
+    color: $light-fg-muted;
+}
+
+.light-theme #data-table {
+    background: $light-bg;
+}
+
+.light-theme DataTable {
+    background: $light-bg;
+    color: $light-fg;
+    scrollbar-background: $light-scrollbar-bg;
+    scrollbar-color: $light-scrollbar;
+    scrollbar-color-hover: $light-scrollbar-hover;
+    scrollbar-color-active: $light-scrollbar-active;
+}
+
+.light-theme DataTable > .datatable--header {
+    background: $light-bg-alt;
+    color: $light-success;
+}
+
+.light-theme DataTable > .datatable--cursor {
+    background: $light-bg-highlight;
+    color: $light-accent;
+}
+
+/* Light theme - Select */
+.light-theme Select {
+    background: $light-bg-alt;
+    color: $light-fg;
+    border: solid $light-fg-dim;
+}
+
+.light-theme Select > SelectCurrent {
+    background: $light-bg-alt;
+    color: $light-fg;
+}
+
+.light-theme Select:focus > SelectCurrent {
+    background: $light-bg-highlight;
+    color: $light-accent;
+}
+
+.light-theme SelectOverlay {
+    background: $light-bg-alt;
+    color: $light-fg;
+    border: solid $light-bg-highlight;
+}
+
+.light-theme SelectOverlay > OptionList {
+    background: $light-bg-alt;
+    color: $light-fg;
+}
+
+.light-theme SelectOverlay > OptionList > .option-list--option-highlighted {
+    background: $light-bg-highlight;
+    color: $light-accent;
+}
+
+/* Light theme - Tabs */
+.light-theme Tabs {
+    background: $light-bg-alt;
+}
+
+.light-theme Tab {
+    background: $light-bg-alt;
+    color: $light-fg-muted;
+}
+
+.light-theme Tab:hover {
+    background: $light-bg-highlight;
+    color: $light-fg;
+}
+
+.light-theme Tab.-active {
+    background: $light-bg-highlight;
+    color: $light-accent;
+}
+
+.light-theme Underline {
+    background: $light-accent;
+}
+
+/* Light theme - Footer */
+.light-theme Footer {
+    background: $light-bg-alt;
+}
+
+.light-theme FooterKey {
+    background: $light-bg-alt;
+}
+
+.light-theme FooterKey .footer-key--key {
+    color: $light-accent;
+    background: $light-bg-highlight;
+}
+
+.light-theme FooterKey .footer-key--description {
+    color: $light-fg;
+    background: $light-bg-alt;
+}
+
+/* Light theme - Static */
+.light-theme Static {
+    background: transparent;
+    color: $light-fg;
+}
