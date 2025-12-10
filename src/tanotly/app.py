@@ -14,6 +14,7 @@ import asyncio
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+import numpy as np
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical, VerticalScroll
@@ -31,7 +32,6 @@ from .screens import PlotScreen
 
 if TYPE_CHECKING:
     from textual.widgets._tree import TreeNode
-    import numpy as np
 
 
 # =============================================================================
@@ -531,8 +531,18 @@ class TanotlyApp(App[None]):
                 self._status("Could not load data")
                 return
 
+            # Validate data is a numpy array
+            if not isinstance(data, np.ndarray):
+                self._status(f"Invalid data type: {type(data)}")
+                return
+
             # Get dimension names from metadata
             dim_names = tuple(node.metadata.get("dims", ()))
+            
+            # Ensure dim_names matches actual data shape
+            if len(dim_names) != data.ndim:
+                # Generate default dimension names if mismatch
+                dim_names = tuple(f"dim{i}" for i in range(data.ndim))
 
             self.push_screen(PlotScreen(
                 data, 
@@ -544,6 +554,8 @@ class TanotlyApp(App[None]):
             
         except Exception as e:
             self._status(f"Error: {e}")
+            import traceback
+            traceback.print_exc()
 
     # =========================================================================
     # Preview Panel Actions

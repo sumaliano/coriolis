@@ -62,9 +62,25 @@ class DataPlot1D(PlotextPlot):
 
         valid_indices = np.where(self._valid_mask)[0]
         x = list(valid_indices)
-        y = [float(self._data[i]) for i in valid_indices]
+        
+        # Safely convert to floats, handling multi-dimensional elements
+        y = []
+        for i in valid_indices:
+            val = self._data[i]
+            # If the value is an array (shouldn't happen for 1D, but be safe)
+            if isinstance(val, np.ndarray):
+                # Take the first element or mean
+                if val.size > 0:
+                    y.append(float(val.flat[0]))
+                else:
+                    y.append(0.0)
+            else:
+                try:
+                    y.append(float(val))
+                except (TypeError, ValueError):
+                    y.append(0.0)
 
-        if len(x) > 0:
+        if len(x) > 0 and len(y) > 0:
             self.plt.plot(x, y, marker="braille", color=plot_line)
         self.refresh()
 

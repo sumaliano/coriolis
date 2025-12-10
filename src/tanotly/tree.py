@@ -178,16 +178,27 @@ def _format_dimensions(dims: tuple, shape: tuple) -> str:
     """Format dimension names with sizes.
     
     Args:
-        dims: Tuple of dimension names
+        dims: Tuple of dimension names (can contain None for unnamed dims)
         shape: Tuple of dimension sizes
         
     Returns:
         Formatted string like "time=365, lat=180, lon=360"
         or "365×180×360" if no dimension names
+        or "number_tm_packets=84, *" for unnamed dimensions
     """
-    if dims and shape and len(dims) == len(shape):
-        return ", ".join(f"{d}={s}" for d, s in zip(dims, shape))
+    if dims and shape:
+        # Handle case where dims and shape lengths don't match
+        # This happens with variables like ubyte tm_packets(number_tm_packets=84, *)
+        parts = []
+        for i, dim in enumerate(dims):
+            if i < len(shape):
+                parts.append(f"{dim}={shape[i]}")
+            else:
+                # Unnamed dimension - show as *
+                parts.append("*")
+        return ", ".join(parts)
     elif shape:
+        # No dimension names, just show shape
         return "×".join(str(s) for s in shape)
     return ""
 
