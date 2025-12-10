@@ -8,10 +8,14 @@ import numpy as np
 
 
 # Viridis-like colormap (perceptually uniform, colorblind-friendly)
+# Extended with more intermediate colors for smoother gradients
 VIRIDIS_COLORS = [
-    (68, 1, 84), (72, 26, 108), (71, 47, 125), (65, 68, 135), (57, 86, 140),
-    (49, 104, 142), (42, 120, 142), (35, 136, 142), (31, 152, 139), (34, 168, 132),
-    (53, 183, 121), (83, 198, 105), (122, 209, 81), (165, 219, 54), (210, 226, 27),
+    (68, 1, 84), (70, 13, 96), (72, 26, 108), (71, 36, 117), (71, 47, 125),
+    (68, 58, 131), (65, 68, 135), (61, 78, 138), (57, 86, 140), (53, 95, 141),
+    (49, 104, 142), (46, 112, 142), (42, 120, 142), (39, 128, 142), (35, 136, 142),
+    (33, 144, 141), (31, 152, 139), (32, 160, 137), (34, 168, 132), (43, 176, 127),
+    (53, 183, 121), (68, 191, 112), (83, 198, 105), (102, 205, 93), (122, 209, 81),
+    (143, 215, 68), (165, 219, 54), (187, 223, 40), (210, 226, 27), (231, 229, 32),
     (253, 231, 37),
 ]
 
@@ -61,6 +65,10 @@ def apply_colormap(
     for row in normalized:
         rgb_row: List[Tuple[int, int, int]] = []
         for val in row:
+            # Handle any remaining NaN values
+            if np.isnan(val):
+                val = 0.0
+            
             # Map [0, 1] value to colormap index
             color_idx = int(val * (n_colors - 1))
             color_idx = max(0, min(color_idx, n_colors - 1))  # Clamp to valid range
