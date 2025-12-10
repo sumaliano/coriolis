@@ -149,6 +149,17 @@ PlotScreen {
     margin: 0 1 0 0;
 }
 
+/* Axis selection controls need more width for dimension names */
+#x-axis-select, #y-axis-select {
+    width: 25;
+    min-width: 15;
+}
+
+#x-axis-select > SelectCurrent,
+#y-axis-select > SelectCurrent {
+    width: 100%;
+}
+
 #controls-row SelectCurrent {
     color: $accent;
 }

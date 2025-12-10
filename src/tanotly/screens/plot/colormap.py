@@ -16,11 +16,17 @@ VIRIDIS_COLORS = [
 ]
 
 
-def apply_colormap(data: np.ndarray) -> List[List[Tuple[int, int, int]]]:
+def apply_colormap(
+    data: np.ndarray,
+    vmin: float = None,
+    vmax: float = None
+) -> List[List[Tuple[int, int, int]]]:
     """Apply viridis colormap to normalized data, returning RGB tuples.
 
     Args:
         data: 2D numpy array to apply colormap to
+        vmin: Minimum value for colormap scaling (optional, uses data min if not provided)
+        vmax: Maximum value for colormap scaling (optional, uses data max if not provided)
 
     Returns:
         List of lists of RGB tuples (0-255 range)
@@ -29,8 +35,15 @@ def apply_colormap(data: np.ndarray) -> List[List[Tuple[int, int, int]]]:
     data_clean = np.nan_to_num(data, nan=0.0)
 
     # Calculate data range
-    data_min = np.nanmin(data_clean)
-    data_max = np.nanmax(data_clean)
+    if vmin is None:
+        data_min = np.nanmin(data_clean)
+    else:
+        data_min = vmin
+    
+    if vmax is None:
+        data_max = np.nanmax(data_clean)
+    else:
+        data_max = vmax
 
     # Normalize to [0, 1] range
     if data_max == data_min:

@@ -47,11 +47,16 @@ class DataPlot1D(PlotextPlot):
     def on_mount(self) -> None:
         """Configure and draw the plot."""
         super().on_mount()
+        self._draw_plot()
+
+    def _draw_plot(self) -> None:
+        """Draw the line plot."""
         colors = ThemeManager.get_plot_colors()
         plot_bg = colors["bg"]
         plot_fg = colors["fg"]
         plot_line = colors.get("line", colors["accent"])
 
+        self.plt.clear_figure()
         self.plt.theme("dark" if self._is_dark else "clear")
         self.plt.canvas_color(plot_bg)
         self.plt.axes_color(plot_bg)
@@ -84,6 +89,16 @@ class DataPlot1D(PlotextPlot):
             self.plt.plot(x, y, marker="braille", color=plot_line)
         self.refresh()
 
+    def update_data(self, data: np.ndarray) -> None:
+        """Update the plot with new data.
+
+        Args:
+            data: New 1D numpy array to display
+        """
+        # Handle NaN values using utility function
+        self._data, self._valid_mask = handle_nan_values_1d(data)
+        self._draw_plot()
+
 
 class DataPlot2D(PlotextPlot):
     """Widget for plotting 2D heatmaps with custom colormap."""
@@ -96,6 +111,8 @@ class DataPlot2D(PlotextPlot):
         is_dark: bool = True,
         width: int = PLOT_2D_DEFAULT_WIDTH,
         height: int = PLOT_2D_DEFAULT_HEIGHT,
+        vmin: float = None,
+        vmax: float = None,
         **kwargs
     ) -> None:
         """Initialize 2D heatmap plot widget.
@@ -105,12 +122,16 @@ class DataPlot2D(PlotextPlot):
             is_dark: Whether to use dark theme
             width: Plot width in characters
             height: Plot height in characters
+            vmin: Minimum value for colormap scaling (optional)
+            vmax: Maximum value for colormap scaling (optional)
             **kwargs: Additional arguments passed to PlotextPlot
         """
         super().__init__(**kwargs)
         self._is_dark = is_dark
         self._width = width
         self._height = height
+        self._vmin = vmin
+        self._vmax = vmax
 
         # Handle NaN values using utility function
         self._data = handle_nan_values_2d(data)
@@ -139,7 +160,8 @@ class DataPlot2D(PlotextPlot):
         # Set plot size to match data aspect ratio
         self.plt.plotsize(self._width, self._height)
 
-        rgb_matrix = apply_colormap(self._data)
+        # Apply colormap with global min/max if provided
+        rgb_matrix = apply_colormap(self._data, self._vmin, self._vmax)
         self.plt.matrix_plot(rgb_matrix)
         self.refresh()
 

@@ -55,13 +55,17 @@ def calculate_plot_size(data: np.ndarray) -> Tuple[int, int]:
 
 def create_plot_widget(
     data: np.ndarray,
-    widget_id: str = "plot-widget"
+    widget_id: str = "plot-widget",
+    vmin: float = None,
+    vmax: float = None
 ) -> Union[DataPlot1D, DataPlot2D, Static]:
     """Create plot widget sized to data.
 
     Args:
         data: The data to plot (should be 1D or 2D after slicing)
         widget_id: CSS ID for the widget
+        vmin: Minimum value for colormap scaling (optional, for 2D plots)
+        vmax: Maximum value for colormap scaling (optional, for 2D plots)
 
     Returns:
         DataPlot1D for 1D data, DataPlot2D for 2D data, or Static for unsupported shapes
@@ -92,6 +96,8 @@ def create_plot_widget(
             is_dark=is_dark,
             width=width,
             height=height,
+            vmin=vmin,
+            vmax=vmax,
             id=widget_id
         )
 
@@ -99,7 +105,7 @@ def create_plot_widget(
         # For 3D+ data, take a 2D slice
         slice_indices = [0] * (data.ndim - 2) + [slice(None), slice(None)]
         sliced_data = data[tuple(slice_indices)]
-        return create_plot_widget(sliced_data, widget_id)
+        return create_plot_widget(sliced_data, widget_id, vmin, vmax)
 
     else:
         # Scalar or empty
