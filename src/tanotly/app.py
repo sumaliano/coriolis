@@ -185,18 +185,22 @@ class TanotlyApp(App[None]):
             self._status(f"Loading {filename}...")
             await self._show_loading_message(filename)
             
-            # Load file in background thread
+            # Fast initial load - structure only
             loop = asyncio.get_event_loop()
             self.dataset = await loop.run_in_executor(
-                None, DataReader.read_file, path
+                None, DataReader.read_file_structure_only, path
             )
             
-            # Populate tree
+            # Populate tree immediately with basic structure
             self._populate_tree_from_dataset()
             
-            # Show success message
+            # Show tree is ready
             await self._show_loaded_message(filename)
             self._status(f"{filename} loaded")
+            
+            # NOTE: We don't load all details in background anymore
+            # Details are loaded on-demand when user selects a node
+            # This is more resilient and doesn't crash on large files
             
         except Exception as e:
             await self._show_error_message(str(e))
@@ -627,11 +631,36 @@ class TanotlyApp(App[None]):
         """Display node details in the preview panel."""
         self.current_node = node
         
+        # Load details on-demand if not yet loaded
+        if not node.is_fully_loaded and self.file_path:
+            self.run_worker(
+                self._load_node_details_and_show(node),
+                name=f"detail_loader_{node.path}",
+                exclusive=False
+            )
+        else:
+            try:
+                container = self._get_detail_container()
+                render_details(container, node, self.dataset)
+            except Exception as e:
+                self._show_details_error(e)
+
+    async def _load_node_details_and_show(self, node: DataNode) -> None:
+        """Load node details and update display."""
         try:
-            container = self._get_detail_container()
-            render_details(container, node, self.dataset)
+            # Load details in background
+            loop = asyncio.get_event_loop()
+            await loop.run_in_executor(
+                None, DataReader.load_node_details, self.file_path, node
+            )
+            
+            # Update display if this node is still selected
+            if self.current_node == node:
+                container = self._get_detail_container()
+                render_details(container, node, self.dataset)
         except Exception as e:
-            self._show_details_error(e)
+            if self.current_node == node:
+                self._show_details_error(e)
 
     def _show_details_error(self, error: Exception) -> None:
         """Show error in details panel."""

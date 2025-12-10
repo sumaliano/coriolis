@@ -26,6 +26,7 @@ class DataNode:
     children: List["DataNode"] = field(default_factory=list)
     attributes: Dict[str, Any] = field(default_factory=dict)
     metadata: Dict[str, Any] = field(default_factory=dict)
+    is_fully_loaded: bool = False  # Track if full metadata has been loaded
 
     def add_child(self, child: "DataNode") -> None:
         """Add a child node."""
