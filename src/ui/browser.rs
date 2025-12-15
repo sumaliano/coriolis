@@ -12,7 +12,7 @@ use ratatui::{
 };
 
 /// Draw the browser UI.
-pub fn draw_browser(f: &mut Frame, app: &mut App) {
+pub(super) fn draw_browser(f: &mut Frame<'_>, app: &mut App) {
     let colors = ThemeColors::from_theme(&app.theme);
 
     // Main layout
@@ -43,7 +43,7 @@ pub fn draw_browser(f: &mut Frame, app: &mut App) {
     }
 }
 
-fn draw_tree(f: &mut Frame, app: &mut App, area: Rect, colors: &ThemeColors) {
+fn draw_tree(f: &mut Frame<'_>, app: &mut App, area: Rect, colors: &ThemeColors) {
     let Some(ref _dataset) = app.dataset else {
         draw_welcome(f, area, colors);
         return;
@@ -52,7 +52,7 @@ fn draw_tree(f: &mut Frame, app: &mut App, area: Rect, colors: &ThemeColors) {
     let visible = app.tree_cursor.visible_items();
     let cursor = app.tree_cursor.cursor();
 
-    let items: Vec<ListItem> = visible
+    let items: Vec<ListItem<'_>> = visible
         .iter()
         .enumerate()
         .map(|(idx, item)| {
@@ -100,7 +100,7 @@ fn draw_tree(f: &mut Frame, app: &mut App, area: Rect, colors: &ThemeColors) {
     f.render_widget(list, area);
 }
 
-fn draw_details(f: &mut Frame, app: &App, area: Rect, colors: &ThemeColors) {
+fn draw_details(f: &mut Frame<'_>, app: &App, area: Rect, colors: &ThemeColors) {
     let lines = if let Some(node) = app.current_node() {
         format_node_details(node, colors)
     } else {
@@ -125,7 +125,7 @@ fn draw_details(f: &mut Frame, app: &App, area: Rect, colors: &ThemeColors) {
     f.render_widget(paragraph, area);
 }
 
-fn draw_status(f: &mut Frame, app: &App, area: Rect, colors: &ThemeColors) {
+fn draw_status(f: &mut Frame<'_>, app: &App, area: Rect, colors: &ThemeColors) {
     let text = if app.search.is_active() {
         format!("Search: {}", app.search.buffer())
     } else if app.search.match_count() > 0 {
@@ -145,7 +145,7 @@ fn draw_status(f: &mut Frame, app: &App, area: Rect, colors: &ThemeColors) {
     f.render_widget(paragraph, area);
 }
 
-fn draw_welcome(f: &mut Frame, area: Rect, colors: &ThemeColors) {
+fn draw_welcome(f: &mut Frame<'_>, area: Rect, colors: &ThemeColors) {
     let lines = vec![
         Line::from(Span::styled(
             "Welcome to Coriolis!",
@@ -180,7 +180,7 @@ fn draw_welcome(f: &mut Frame, area: Rect, colors: &ThemeColors) {
     f.render_widget(paragraph, area);
 }
 
-fn draw_plot_overlay(f: &mut Frame, _app: &App, colors: &ThemeColors) {
+fn draw_plot_overlay(f: &mut Frame<'_>, _app: &App, colors: &ThemeColors) {
     let area = centered_rect(80, 80, f.area());
 
     let lines = vec![

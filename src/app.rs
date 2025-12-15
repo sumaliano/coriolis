@@ -3,8 +3,7 @@
 use std::path::PathBuf;
 
 use crate::data::{DataNode, DataReader, DatasetInfo};
-use crate::search::SearchState;
-use crate::tree::TreeState;
+use crate::navigation::{SearchState, TreeState};
 
 /// Application theme.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -34,6 +33,7 @@ impl Theme {
 }
 
 /// Application state.
+#[derive(Debug)]
 pub struct App {
     /// Current file path.
     pub file_path: Option<PathBuf>,

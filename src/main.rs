@@ -1,12 +1,9 @@
 //! Coriolis - A terminal-based NetCDF data viewer.
 
 mod app;
-mod clipboard;
 mod data;
 mod error;
-mod plot;
-mod search;
-mod tree;
+mod navigation;
 mod ui;
 mod util;
 

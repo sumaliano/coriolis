@@ -34,14 +34,17 @@
 )]
 #![deny(unsafe_code)]
 
+/// Application state and logic.
 pub mod app;
-pub mod clipboard;
+/// Data reading and representation.
 pub mod data;
+/// Error types.
 pub mod error;
-pub mod plot;
-pub mod search;
-pub mod tree;
+/// Navigation and search.
+pub mod navigation;
+/// User interface.
 pub mod ui;
+/// Utility functions.
 pub mod util;
 
 pub use error::{CoriolisError, Result};

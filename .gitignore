@@ -1,5 +1,8 @@
 # Rust
 /target
+*.log
+coriolis.log
+tanotly.log
 Cargo.lock
 *.rs.bk
 
