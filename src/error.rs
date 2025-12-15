@@ -10,18 +10,24 @@ pub type Result<T> = std::result::Result<T, CoriolisError>;
 
 /// Errors that can occur in Coriolis.
 #[derive(Debug, Error)]
+#[allow(dead_code)]
 pub enum CoriolisError {
     /// Failed to open a file.
     #[error("Failed to open file: {path}")]
     FileOpen {
+        /// Path to the file that could not be opened.
         path: PathBuf,
+        /// Underlying IO error.
         #[source]
         source: std::io::Error,
     },
 
     /// Unsupported file format.
     #[error("Unsupported file format: {extension}")]
-    UnsupportedFormat { extension: String },
+    UnsupportedFormat {
+        /// File extension that is not supported.
+        extension: String,
+    },
 
     /// Failed to read NetCDF file.
     #[error("NetCDF error: {0}")]
@@ -41,9 +47,13 @@ pub enum CoriolisError {
 
     /// Node not found in tree.
     #[error("Node not found: {path}")]
-    NodeNotFound { path: String },
+    NodeNotFound {
+        /// Path to the node that could not be found.
+        path: String,
+    },
 }
 
+#[allow(dead_code)]
 impl CoriolisError {
     /// Create a FileOpen error.
     pub fn file_open(path: PathBuf, source: std::io::Error) -> Self {
