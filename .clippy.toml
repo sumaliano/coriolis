@@ -1,0 +1,13 @@
+# Clippy configuration for Coriolis
+
+# Minimum supported Rust version
+msrv = "1.70"
+
+# Cognitive complexity threshold
+cognitive-complexity-threshold = 30
+
+# Don't warn about too many arguments if there are less than this
+too-many-arguments-threshold = 8
+
+# Type complexity threshold
+type-complexity-threshold = 500

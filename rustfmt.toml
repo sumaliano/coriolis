@@ -1,0 +1,18 @@
+# Rustfmt configuration for Coriolis
+
+edition = "2021"
+max_width = 100
+hard_tabs = false
+tab_spaces = 4
+
+# Use Unix line endings
+newline_style = "Unix"
+
+# Reorder imports
+reorder_imports = true
+
+# Use small heuristics for formatting decisions
+use_small_heuristics = "Default"
+
+# Match block formatting
+match_block_trailing_comma = true

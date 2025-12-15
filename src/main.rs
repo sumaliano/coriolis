@@ -1,0 +1,252 @@
+//! Coriolis - A terminal-based NetCDF data viewer.
+
+mod app;
+mod clipboard;
+mod data;
+mod error;
+mod plot;
+mod search;
+mod tree;
+mod ui;
+mod util;
+
+use anyhow::Result;
+use app::App;
+use clap::Parser;
+use crossterm::{
+    event::{self, Event, KeyCode, KeyModifiers},
+    execute,
+    terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
+};
+use ratatui::{backend::CrosstermBackend, Terminal};
+use std::io;
+use std::path::PathBuf;
+use tracing::Level;
+use tracing_subscriber::FmtSubscriber;
+
+#[derive(Parser, Debug)]
+#[command(name = "coriolis")]
+#[command(about = "A terminal-based netCDF data viewer", long_about = None)]
+struct Args {
+    /// Path to the NetCDF file to open
+    file: Option<PathBuf>,
+}
+
+fn main() -> Result<()> {
+    // Set up logging
+    let subscriber = FmtSubscriber::builder()
+        .with_max_level(Level::DEBUG)
+        .with_writer(|| {
+            std::fs::OpenOptions::new()
+                .create(true)
+                .write(true)
+                .truncate(true)
+                .open("coriolis.log")
+                .expect("Failed to open log file")
+        })
+        .finish();
+    tracing::subscriber::set_global_default(subscriber)?;
+
+    tracing::info!("Starting Coriolis");
+
+    let args = Args::parse();
+
+    // Validate file if provided
+    if let Some(ref path) = args.file {
+        if !path.exists() {
+            eprintln!("Error: File not found: {}", path.display());
+            std::process::exit(1);
+        }
+    }
+
+    // Setup terminal
+    enable_raw_mode()?;
+    let mut stdout = io::stdout();
+    execute!(stdout, EnterAlternateScreen)?;
+    let backend = CrosstermBackend::new(stdout);
+    let mut terminal = Terminal::new(backend)?;
+
+    // Run app
+    let app = App::new(args.file);
+    let res = run_app(&mut terminal, app);
+
+    // Restore terminal
+    disable_raw_mode()?;
+    execute!(terminal.backend_mut(), LeaveAlternateScreen)?;
+    terminal.show_cursor()?;
+
+    if let Err(err) = res {
+        eprintln!("Error: {}", err);
+    }
+
+    tracing::info!("Coriolis exited");
+
+    Ok(())
+}
+
+fn run_app<B: ratatui::backend::Backend>(terminal: &mut Terminal<B>, mut app: App) -> Result<()> {
+    let mut pending_g = false; // For 'gg' vim binding
+
+    loop {
+        terminal.draw(|f| ui::draw(f, &mut app))?;
+
+        if event::poll(std::time::Duration::from_millis(100))? {
+            if let Event::Key(key) = event::read()? {
+                // Search mode - handle separately
+                if app.search.is_active() {
+                    match key.code {
+                        KeyCode::Enter => {
+                            app.search.submit();
+                            if let Some(ref dataset) = app.dataset {
+                                app.tree_cursor.expand_all();
+                                app.search.perform_search(&dataset.root_node);
+
+                                if let Some(path) = app.search.current_match_path() {
+                                    app.tree_cursor.goto_node(path);
+                                }
+                            }
+                        },
+                        KeyCode::Esc => app.search.cancel(),
+                        KeyCode::Backspace => app.search.backspace(),
+                        KeyCode::Char(c) => app.search.input(c),
+                        _ => {},
+                    }
+                    continue;
+                }
+
+                // Normal mode
+                match (key.modifiers, key.code) {
+                    // Quit
+                    (KeyModifiers::NONE, KeyCode::Char('q')) => return Ok(()),
+
+                    // Navigation
+                    (KeyModifiers::NONE, KeyCode::Up)
+                    | (KeyModifiers::NONE, KeyCode::Char('k')) => {
+                        app.tree_cursor.cursor_up();
+                        app.preview_scroll = 0;
+                    },
+                    (KeyModifiers::NONE, KeyCode::Down)
+                    | (KeyModifiers::NONE, KeyCode::Char('j')) => {
+                        app.tree_cursor.cursor_down();
+                        app.preview_scroll = 0;
+                    },
+                    (KeyModifiers::NONE, KeyCode::Left)
+                    | (KeyModifiers::NONE, KeyCode::Char('h')) => {
+                        app.tree_cursor.collapse_current();
+                    },
+                    (KeyModifiers::NONE, KeyCode::Right)
+                    | (KeyModifiers::NONE, KeyCode::Char('l')) => {
+                        app.tree_cursor.expand_current();
+                    },
+
+                    // Vim navigation
+                    (KeyModifiers::NONE, KeyCode::Char('g')) => {
+                        if pending_g {
+                            app.tree_cursor.goto_first();
+                            app.preview_scroll = 0;
+                            pending_g = false;
+                        } else {
+                            pending_g = true;
+                        }
+                    },
+                    (KeyModifiers::SHIFT, KeyCode::Char('G')) => {
+                        app.tree_cursor.goto_last();
+                        app.preview_scroll = 0;
+                    },
+                    (KeyModifiers::CONTROL, KeyCode::Char('f')) => {
+                        for _ in 0..15 {
+                            app.tree_cursor.cursor_down();
+                        }
+                        app.preview_scroll = 0;
+                    },
+                    (KeyModifiers::CONTROL, KeyCode::Char('b')) => {
+                        for _ in 0..15 {
+                            app.tree_cursor.cursor_up();
+                        }
+                        app.preview_scroll = 0;
+                    },
+
+                    // Search
+                    (KeyModifiers::NONE, KeyCode::Char('/')) => {
+                        app.search.start();
+                    },
+                    (KeyModifiers::NONE, KeyCode::Char('n')) => {
+                        app.search.next_match();
+                        if let Some(path) = app.search.current_match_path() {
+                            app.tree_cursor.goto_node(path);
+                        }
+                    },
+                    (KeyModifiers::SHIFT, KeyCode::Char('N')) => {
+                        app.search.prev_match();
+                        if let Some(path) = app.search.current_match_path() {
+                            app.tree_cursor.goto_node(path);
+                        }
+                    },
+
+                    // Features
+                    (KeyModifiers::NONE, KeyCode::Char('p')) => {
+                        app.toggle_plot();
+                    },
+                    (KeyModifiers::NONE, KeyCode::Char('t')) => {
+                        app.toggle_preview();
+                    },
+                    (KeyModifiers::SHIFT, KeyCode::Char('T')) => {
+                        app.cycle_theme();
+                    },
+                    (KeyModifiers::SHIFT, KeyCode::Char('?')) => {
+                        app.status = "Help: q=quit, j/k=nav, /=search, t=toggle preview, T=theme, c=copy tree, y=copy node".to_string();
+                    },
+
+                    // Clipboard
+                    (KeyModifiers::NONE, KeyCode::Char('c')) => {
+                        if let Some(ref dataset) = app.dataset {
+                            let file_name = app
+                                .file_path
+                                .as_ref()
+                                .and_then(|p| p.file_name())
+                                .map(|n| n.to_string_lossy().to_string());
+                            match util::copy_tree_structure(
+                                &dataset.root_node,
+                                file_name.as_deref(),
+                            ) {
+                                Ok(_) => app.status = "Tree copied!".to_string(),
+                                Err(e) => app.status = format!("Copy failed: {}", e),
+                            }
+                        } else {
+                            app.status = "No file loaded".to_string();
+                        }
+                    },
+                    (KeyModifiers::NONE, KeyCode::Char('y')) => {
+                        if let Some(node) = app.current_node() {
+                            match util::copy_node_info(node) {
+                                Ok(_) => app.status = format!("Copied {}!", node.name),
+                                Err(e) => app.status = format!("Copy failed: {}", e),
+                            }
+                        } else {
+                            app.status = "No node selected".to_string();
+                        }
+                    },
+
+                    // Preview scrolling
+                    (KeyModifiers::CONTROL, KeyCode::Char('d'))
+                    | (KeyModifiers::SHIFT, KeyCode::Char('J')) => {
+                        app.scroll_preview_down();
+                    },
+                    (KeyModifiers::CONTROL, KeyCode::Char('u'))
+                    | (KeyModifiers::SHIFT, KeyCode::Char('K')) => {
+                        app.scroll_preview_up();
+                    },
+
+                    // Escape - close overlays
+                    (KeyModifiers::NONE, KeyCode::Esc) => {
+                        app.close_overlay();
+                    },
+
+                    _ => {
+                        pending_g = false;
+                    },
+                }
+            }
+        }
+    }
+}

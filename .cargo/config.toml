@@ -1,0 +1,21 @@
+# Cargo configuration for static linking
+
+[target.x86_64-unknown-linux-musl]
+rustflags = ["-C", "target-feature=+crt-static", "-C", "link-arg=-static"]
+
+[target.x86_64-pc-windows-gnu]
+rustflags = ["-C", "target-feature=+crt-static"]
+
+# For better linking on Linux
+[target.x86_64-unknown-linux-gnu]
+rustflags = ["-C", "link-arg=-Wl,--as-needed"]
+
+# Build settings
+[build]
+# Use all CPU cores
+jobs = -1
+
+# Environment variables for static builds
+[env]
+# Tell pkg-config to prefer static libraries
+PKG_CONFIG_ALL_STATIC = "1"
