@@ -6,7 +6,9 @@
 mod dataset;
 mod node;
 mod reader;
+mod variable_data;
 
 pub use dataset::DatasetInfo;
 pub use node::{DataNode, NodeType};
 pub use reader::DataReader;
+pub use variable_data::{read_variable, LoadedVariable};

@@ -9,15 +9,22 @@ pub struct TreeItem {
     pub level: usize,
     /// Whether this node is expanded.
     pub expanded: bool,
-    /// Index in the items list.
-    pub index: usize,
 }
 
 /// Tree navigation state.
+///
+/// The tree maintains a flat list of visible items. When nodes are expanded/collapsed,
+/// the list is rebuilt to reflect the new visibility state.
 #[derive(Debug)]
 pub struct TreeState {
+    /// All tree items in display order (only visible items).
     items: Vec<TreeItem>,
+    /// Cursor position (index into items).
     cursor: usize,
+    /// The root node for rebuilding.
+    root: Option<DataNode>,
+    /// Set of expanded node paths.
+    expanded_paths: std::collections::HashSet<String>,
 }
 
 impl TreeState {
@@ -26,38 +33,44 @@ impl TreeState {
         Self {
             items: Vec::new(),
             cursor: 0,
+            root: None,
+            expanded_paths: std::collections::HashSet::new(),
         }
     }
 
     /// Build tree from dataset.
     pub fn build_from_dataset(&mut self, dataset: &DatasetInfo) {
-        self.items.clear();
+        self.root = Some(dataset.root_node.clone());
+        // Root is expanded by default
+        self.expanded_paths.clear();
+        self.expanded_paths.insert(dataset.root_node.path.clone());
+        self.rebuild_visible_items();
         self.cursor = 0;
-
-        // Add root node
-        self.add_node_recursive(&dataset.root_node, 0, 0);
     }
 
-    fn add_node_recursive(&mut self, node: &DataNode, level: usize, index: usize) -> usize {
-        let item_index = self.items.len();
+    /// Rebuild the visible items list based on expanded state.
+    fn rebuild_visible_items(&mut self) {
+        self.items.clear();
+        if let Some(root) = self.root.clone() {
+            self.add_visible_recursive(&root, 0);
+        }
+    }
+
+    fn add_visible_recursive(&mut self, node: &DataNode, level: usize) {
+        let is_expanded = self.expanded_paths.contains(&node.path);
 
         self.items.push(TreeItem {
             node: node.clone(),
             level,
-            expanded: level == 0, // Root is expanded by default
-            index: item_index,
+            expanded: is_expanded,
         });
 
-        let mut next_index = index + 1;
-
-        // Add children if expanded
-        if level == 0 {
+        // Only add children if this node is expanded
+        if is_expanded {
             for child in &node.children {
-                next_index = self.add_node_recursive(child, level + 1, next_index);
+                self.add_visible_recursive(child, level + 1);
             }
         }
-
-        next_index
     }
 
     /// Move the cursor up one position.
@@ -69,7 +82,7 @@ impl TreeState {
 
     /// Move the cursor down one position.
     pub fn cursor_down(&mut self) {
-        if self.cursor + 1 < self.visible_items().len() {
+        if self.cursor + 1 < self.items.len() {
             self.cursor += 1;
         }
     }
@@ -77,9 +90,11 @@ impl TreeState {
     /// Expand the node at the current cursor position.
     pub fn expand_current(&mut self) {
         if self.cursor < self.items.len() {
-            let current_item = &self.items[self.cursor];
-            if current_item.node.is_group() && !current_item.expanded {
-                self.toggle_expand(self.cursor);
+            let item = &self.items[self.cursor];
+            if item.node.is_group() && !item.expanded {
+                let path = item.node.path.clone();
+                self.expanded_paths.insert(path);
+                self.rebuild_visible_items();
             }
         }
     }
@@ -87,61 +102,32 @@ impl TreeState {
     /// Collapse the node at the current cursor position.
     pub fn collapse_current(&mut self) {
         if self.cursor < self.items.len() {
-            let current_item = &self.items[self.cursor];
-            if current_item.node.is_group() && current_item.expanded {
-                self.toggle_expand(self.cursor);
+            let item = &self.items[self.cursor];
+            if item.node.is_group() && item.expanded {
+                let path = item.node.path.clone();
+                self.expanded_paths.remove(&path);
+                self.rebuild_visible_items();
             }
         }
     }
 
     /// Toggle the expansion state of a node at the given index.
+    #[allow(dead_code)]
     pub fn toggle_expand(&mut self, index: usize) {
         if index >= self.items.len() {
             return;
         }
 
         let item = &self.items[index];
-        let was_expanded = item.expanded;
-        let level = item.level;
-        let node = item.node.clone();
+        let path = item.node.path.clone();
 
-        // Toggle expansion
-        self.items[index].expanded = !was_expanded;
-
-        if was_expanded {
-            // Collapse: remove all children from view
-            let mut i = index + 1;
-            while i < self.items.len() && self.items[i].level > level {
-                i += 1;
-            }
-            self.items.drain(index + 1..i);
+        if item.expanded {
+            self.expanded_paths.remove(&path);
         } else {
-            // Expand: add children to view
-            let mut insert_pos = index + 1;
-            for child in &node.children {
-                self.insert_node_recursive(child, level + 1, insert_pos);
-                insert_pos = self.find_next_sibling_position(insert_pos, level + 1);
-            }
+            self.expanded_paths.insert(path);
         }
-    }
 
-    fn insert_node_recursive(&mut self, node: &DataNode, level: usize, pos: usize) {
-        let item = TreeItem {
-            node: node.clone(),
-            level,
-            expanded: false,
-            index: pos,
-        };
-
-        self.items.insert(pos, item);
-    }
-
-    fn find_next_sibling_position(&self, start: usize, target_level: usize) -> usize {
-        let mut pos = start;
-        while pos < self.items.len() && self.items[pos].level >= target_level {
-            pos += 1;
-        }
-        pos
+        self.rebuild_visible_items();
     }
 
     /// Go to the first item.
@@ -151,40 +137,15 @@ impl TreeState {
 
     /// Go to the last visible item.
     pub fn goto_last(&mut self) {
-        let visible = self.visible_items();
-        if !visible.is_empty() {
-            self.cursor = visible.len() - 1;
+        if !self.items.is_empty() {
+            self.cursor = self.items.len() - 1;
         }
     }
 
     /// Get all currently visible items in the tree.
+    /// Since we rebuild on expand/collapse, all items in the list are visible.
     pub fn visible_items(&self) -> Vec<&TreeItem> {
-        self.items
-            .iter()
-            .filter(|item| self.is_visible(item))
-            .collect()
-    }
-
-    fn is_visible(&self, item: &TreeItem) -> bool {
-        if item.level == 0 {
-            return true;
-        }
-
-        // Check if all ancestors are expanded
-        let mut current_level = item.level - 1;
-        let mut check_index = item.index;
-
-        while current_level > 0 && check_index > 0 {
-            check_index -= 1;
-            if self.items[check_index].level == current_level {
-                if !self.items[check_index].expanded {
-                    return false;
-                }
-                current_level -= 1;
-            }
-        }
-
-        true
+        self.items.iter().collect()
     }
 
     /// Get the current cursor position.
@@ -195,22 +156,17 @@ impl TreeState {
     /// Check if a node is expanded.
     #[allow(dead_code)]
     pub fn is_expanded(&self, path: &str) -> bool {
-        self.items
-            .iter()
-            .find(|item| item.node.path == path)
-            .map(|item| item.expanded)
-            .unwrap_or(false)
+        self.expanded_paths.contains(path)
     }
 
     /// Get the current node.
     pub fn current_node(&self) -> Option<&DataNode> {
-        self.visible_items().get(self.cursor).map(|item| &item.node)
+        self.items.get(self.cursor).map(|item| &item.node)
     }
 
     /// Move the cursor to a node with the given path.
     pub fn goto_node(&mut self, target_path: &str) {
-        let visible = self.visible_items();
-        for (i, item) in visible.iter().enumerate() {
+        for (i, item) in self.items.iter().enumerate() {
             if item.node.path == target_path {
                 self.cursor = i;
                 return;
@@ -220,10 +176,18 @@ impl TreeState {
 
     /// Expand all nodes in the tree.
     pub fn expand_all(&mut self) {
-        for i in 0..self.items.len() {
-            if self.items[i].node.is_group() && !self.items[i].expanded {
-                self.toggle_expand(i);
-            }
+        if let Some(root) = self.root.clone() {
+            Self::collect_group_paths(&root, &mut self.expanded_paths);
+        }
+        self.rebuild_visible_items();
+    }
+
+    fn collect_group_paths(node: &DataNode, paths: &mut std::collections::HashSet<String>) {
+        if node.is_group() {
+            paths.insert(node.path.clone());
+        }
+        for child in &node.children {
+            Self::collect_group_paths(child, paths);
         }
     }
 }

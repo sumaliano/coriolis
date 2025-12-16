@@ -2,8 +2,9 @@
 
 use std::path::PathBuf;
 
-use crate::data::{DataNode, DataReader, DatasetInfo};
+use crate::data::{read_variable, DataNode, DataReader, DatasetInfo};
 use crate::navigation::{SearchState, TreeState};
+use crate::ui::OverlayState;
 
 /// Application theme.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -45,8 +46,8 @@ pub struct App {
     pub search: SearchState,
     /// Show preview panel.
     pub show_preview: bool,
-    /// Show plot overlay.
-    pub show_plot: bool,
+    /// Data overlay state.
+    pub overlay: OverlayState,
     /// Preview scroll offset.
     pub preview_scroll: u16,
     /// Status message.
@@ -68,7 +69,7 @@ impl App {
             tree_cursor: TreeState::new(),
             search: SearchState::new(),
             show_preview: true,
-            show_plot: false,
+            overlay: OverlayState::new(),
             preview_scroll: 0,
             status: "Ready".to_string(),
             theme: Theme::GruvboxDark,
@@ -131,18 +132,48 @@ impl App {
         };
     }
 
-    /// Toggle plot overlay.
+    /// Toggle data overlay for viewing variable content.
     pub fn toggle_plot(&mut self) {
-        if let Some(node) = self.current_node() {
-            if node.is_variable() {
-                self.show_plot = !self.show_plot;
-                self.status = if self.show_plot {
-                    "Plot: ON".to_string()
-                } else {
-                    "Plot: OFF".to_string()
-                };
-            } else {
-                self.status = "Plot only available for variables".to_string();
+        // If overlay is already visible, close it
+        if self.overlay.visible {
+            self.overlay.close();
+            self.status = "Data viewer closed".to_string();
+            return;
+        }
+
+        // Check if we have a variable selected
+        let node = match self.current_node() {
+            Some(n) => n.clone(),
+            None => {
+                self.status = "No node selected".to_string();
+                return;
+            }
+        };
+
+        if !node.is_variable() {
+            self.status = "Data viewer only available for variables".to_string();
+            return;
+        }
+
+        // Try to load the variable data
+        let file_path = match &self.file_path {
+            Some(p) => p.clone(),
+            None => {
+                self.status = "No file loaded".to_string();
+                return;
+            }
+        };
+
+        self.status = format!("Loading {}...", node.name);
+
+        match read_variable(&file_path, &node.path) {
+            Ok(loaded_var) => {
+                self.overlay.load_variable(loaded_var);
+                self.status = format!("Loaded {}", node.name);
+            }
+            Err(e) => {
+                self.overlay.set_error(format!("Failed to load variable: {}", e));
+                self.status = format!("Error loading {}", node.name);
             }
         }
     }
@@ -165,7 +196,7 @@ impl App {
 
     /// Close any open overlay.
     pub fn close_overlay(&mut self) {
-        self.show_plot = false;
+        self.overlay.close();
         self.search.cancel();
     }
 }

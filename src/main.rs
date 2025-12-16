@@ -38,6 +38,7 @@ fn main() -> Result<()> {
                 .create(true)
                 .write(true)
                 .truncate(true)
+                .append(false)
                 .open("coriolis.log")
                 .expect("Failed to open log file")
         })
@@ -89,6 +90,64 @@ fn run_app<B: ratatui::backend::Backend>(terminal: &mut Terminal<B>, mut app: Ap
 
         if event::poll(std::time::Duration::from_millis(100))? {
             if let Event::Key(key) = event::read()? {
+                // Overlay mode - handle separately
+                if app.overlay.visible {
+                    match (key.modifiers, key.code) {
+                        // Close overlay
+                        (KeyModifiers::NONE, KeyCode::Esc)
+                        | (KeyModifiers::NONE, KeyCode::Char('q'))
+                        | (KeyModifiers::NONE, KeyCode::Char('p')) => {
+                            app.overlay.close();
+                            app.status = "Data viewer closed".to_string();
+                        }
+                        // Cycle view mode with Tab
+                        (KeyModifiers::NONE, KeyCode::Tab) => {
+                            app.overlay.cycle_view_mode();
+                            app.status = format!("View: {}", app.overlay.view_mode.name());
+                        }
+                        // Pan with hjkl or arrows
+                        (KeyModifiers::NONE, KeyCode::Up)
+                        | (KeyModifiers::NONE, KeyCode::Char('k')) => {
+                            app.overlay.scroll_up(1);
+                        }
+                        (KeyModifiers::NONE, KeyCode::Down)
+                        | (KeyModifiers::NONE, KeyCode::Char('j')) => {
+                            app.overlay.scroll_down(1);
+                        }
+                        (KeyModifiers::NONE, KeyCode::Left)
+                        | (KeyModifiers::NONE, KeyCode::Char('h')) => {
+                            app.overlay.scroll_left(1);
+                        }
+                        (KeyModifiers::NONE, KeyCode::Right)
+                        | (KeyModifiers::NONE, KeyCode::Char('l')) => {
+                            app.overlay.scroll_right(1);
+                        }
+                        // Page up/down
+                        (KeyModifiers::CONTROL, KeyCode::Char('u')) => {
+                            app.overlay.scroll_up(10);
+                        }
+                        (KeyModifiers::CONTROL, KeyCode::Char('d')) => {
+                            app.overlay.scroll_down(10);
+                        }
+                        // Dimension selector navigation (for 3D+ data)
+                        (KeyModifiers::NONE, KeyCode::Char('['))
+                        | (KeyModifiers::NONE, KeyCode::Char(']')) => {
+                            app.overlay.next_dim_selector();
+                        }
+                        // Increment/decrement slice index
+                        (KeyModifiers::NONE, KeyCode::Char('+'))
+                        | (KeyModifiers::NONE, KeyCode::Char('=')) => {
+                            app.overlay.increment_active_slice();
+                        }
+                        (KeyModifiers::NONE, KeyCode::Char('-'))
+                        | (KeyModifiers::NONE, KeyCode::Char('_')) => {
+                            app.overlay.decrement_active_slice();
+                        }
+                        _ => {}
+                    }
+                    continue;
+                }
+
                 // Search mode - handle separately
                 if app.search.is_active() {
                     match key.code {
@@ -102,11 +161,11 @@ fn run_app<B: ratatui::backend::Backend>(terminal: &mut Terminal<B>, mut app: Ap
                                     app.tree_cursor.goto_node(path);
                                 }
                             }
-                        },
+                        }
                         KeyCode::Esc => app.search.cancel(),
                         KeyCode::Backspace => app.search.backspace(),
                         KeyCode::Char(c) => app.search.input(c),
-                        _ => {},
+                        _ => {}
                     }
                     continue;
                 }

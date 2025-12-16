@@ -1,11 +1,13 @@
 //! User interface rendering.
 
 mod browser;
+mod overlay;
 mod theme;
 
 use crate::app::App;
 use ratatui::Frame;
 
+pub use overlay::{draw_overlay, OverlayState};
 pub use theme::ThemeColors;
 
 /// Draw the UI.

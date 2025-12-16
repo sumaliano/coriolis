@@ -36,7 +36,7 @@ coriolis your_file.nc
 
 ## Why "Coriolis"?
 
-The Coriolis effect is crucial in atmospheric and oceanic sciences - the same fields that heavily use NetCDF and HDF5 formats for data storage. It's fitting for a tool that helps visualize scientific data!
+The Coriolis effect is crucial in atmospheric and oceanic sciences – the same fields that heavily use NetCDF and HDF5 formats for data storage. It fits for a tool that helps visualize scientific data!
 
 ## Building Options
 
@@ -75,6 +75,7 @@ make help           # Show all targets
 
 ## Keyboard Shortcuts
 
+### Browser Navigation
 | Key | Action |
 |-----|--------|
 | `↑/k` | Move up |
@@ -85,12 +86,25 @@ make help           # Show all targets
 | `G` | Go to bottom |
 | `/` | Search |
 | `n` | Next match |
+| `N` | Previous match |
 | `t` | Toggle preview |
 | `T` | Change theme |
+| `p` | Open data viewer (on variable) |
 | `c` | Copy tree |
 | `y` | Copy node |
 | `?` | Help |
 | `q` | Quit |
+
+### Data Viewer (when overlay is open)
+| Key | Action |
+|-----|--------|
+| `Tab` | Cycle view mode (Table → 1D Plot → Heatmap) |
+| `hjkl` / Arrows | Pan table / navigate |
+| `Ctrl+u` | Page up |
+| `Ctrl+d` | Page down |
+| `[` / `]` | Select dimension (for 3D+ data) |
+| `+` / `-` | Change slice index |
+| `Esc` / `q` / `p` | Close viewer |
 
 ## Features
 
@@ -102,6 +116,156 @@ make help           # Show all targets
 - 📦 Single portable binary
 - 💾 Low memory (~90MB)
 - 🔒 Zero runtime dependencies (static build)
+- 📊 Interactive data viewer with table, 1D plot, and heatmap views
+- 🧊 Multi-dimensional data slicing for 3D+ arrays
+
+## Architecture
+
+Coriolis follows a clean separation between **state management** and **presentation**.
+
+### Module Overview
+
+```
+src/
+├── main.rs              # Entry point, event loop, keyboard handling
+├── app.rs               # Application state and business logic
+├── data/                # Data structures and NetCDF reading
+│   ├── node.rs          # Tree node types (Root, Group, Variable, Dimension)
+│   ├── reader.rs        # NetCDF file parsing
+│   ├── variable_data.rs # Variable data loading and slicing
+│   └── dataset.rs       # Dataset wrapper
+├── navigation/          # Navigation state management
+│   ├── tree.rs          # Tree cursor and visibility logic
+│   └── search.rs        # Search functionality
+├── ui/                  # Pure rendering functions
+│   ├── browser.rs       # Main browser UI
+│   ├── overlay.rs       # Data viewer overlay (table/plot/heatmap)
+│   └── theme.rs         # Color schemes
+└── util/                # Utilities (clipboard, etc.)
+```
+
+### App vs UI: The Separation
+
+**`app.rs` (State & Logic):**
+- Owns all application state (`App` struct)
+- Handles business logic and state mutations
+- Manages file loading, data reading, navigation state
+- **Never renders anything** - just manages data
+
+```rust
+pub struct App {
+    file_path: Option<PathBuf>,      // What file is open?
+    dataset: Option<DatasetInfo>,    // Parsed file structure
+    tree_cursor: TreeState,          // Where in the tree are we?
+    search: SearchState,             // Search state
+    overlay: OverlayState,           // Data viewer state
+    theme: Theme,                    // Current theme
+    // ... etc
+}
+
+impl App {
+    pub fn toggle_preview(&mut self) { ... }  // Business logic
+    pub fn load_file(&mut self, path: PathBuf) { ... }
+    pub fn toggle_plot(&mut self) { ... }
+}
+```
+
+**`ui/` (Presentation):**
+- Pure rendering functions that take state and draw UI
+- **Never modifies state** - just reads it
+- Each module renders a specific part of the UI
+
+```rust
+// ui/browser.rs
+pub fn draw_browser(f: &mut Frame, app: &App) {
+    // Read app state, render UI
+    let colors = ThemeColors::from_theme(&app.theme);
+    draw_tree(f, app, area, &colors);
+    draw_details(f, app, area, &colors);
+    // ...
+}
+
+// ui/overlay.rs
+pub fn draw_overlay(f: &mut Frame, state: &OverlayState, colors: &ThemeColors) {
+    // Read overlay state, render data viewer
+    match state.view_mode {
+        ViewMode::Table => draw_table_view(...),
+        ViewMode::Plot1D => draw_plot1d_view(...),
+        ViewMode::Heatmap => draw_heatmap_view(...),
+    }
+}
+```
+
+### Data Flow
+
+```
+User Input (main.rs)
+    │
+    ├─→ Keyboard Event
+    │       │
+    │       ├─→ Modify App State (app.rs methods)
+    │       │       │
+    │       │       ├─→ Update TreeState (navigation/tree.rs)
+    │       │       ├─→ Update SearchState (navigation/search.rs)
+    │       │       └─→ Update OverlayState (ui/overlay.rs)
+    │       │
+    │       └─→ Trigger Redraw
+    │
+    └─→ Render Loop (60 FPS)
+            │
+            └─→ ui::draw(frame, &app)
+                    │
+                    ├─→ ui/browser.rs reads app state
+                    └─→ ui/overlay.rs reads app.overlay state
+```
+
+### Key Design Principles
+
+1. **Unidirectional Data Flow**: Input → State Update → Render
+2. **Pure Rendering**: UI functions never mutate state
+3. **State Encapsulation**: Each module owns its state (TreeState, SearchState, OverlayState)
+4. **No Business Logic in UI**: UI code only knows how to draw, not what to do
+
+### Example: Opening the Data Viewer
+
+```rust
+// 1. User presses 'p' (main.rs)
+KeyCode::Char('p') => {
+    app.toggle_plot();  // State mutation
+}
+
+// 2. App modifies state (app.rs)
+pub fn toggle_plot(&mut self) {
+    let node = self.current_node()?;
+    let data = read_variable(&self.file_path, &node.path)?;
+    self.overlay.load_variable(data);  // Update overlay state
+}
+
+// 3. Next render cycle (ui/overlay.rs)
+pub fn draw_overlay(f: &mut Frame, state: &OverlayState, ...) {
+    if !state.visible { return; }
+    // Read state.variable and render table/plot/heatmap
+}
+```
+
+### State Structures
+
+**TreeState** (navigation/tree.rs):
+- Flat list of visible tree items
+- Cursor position (index into visible items)
+- Set of expanded node paths
+- Rebuilds on expand/collapse for correctness
+
+**SearchState** (navigation/search.rs):
+- Search buffer and submitted query
+- List of match paths
+- Current match index
+
+**OverlayState** (ui/overlay.rs):
+- Loaded variable data (LoadedVariable)
+- View mode (Table/Plot1D/Heatmap)
+- Scroll position
+- Dimension slice indices (for 3D+ data)
 
 ## Musl vs Glibc
 

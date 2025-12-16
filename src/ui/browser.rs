@@ -1,6 +1,6 @@
 //! Browser UI rendering.
 
-use super::ThemeColors;
+use super::{draw_overlay, ThemeColors};
 use crate::app::App;
 use crate::data::DataNode;
 use ratatui::{
@@ -38,9 +38,7 @@ pub(super) fn draw_browser(f: &mut Frame<'_>, app: &mut App) {
     draw_status(f, app, chunks[1], &colors);
 
     // Overlays
-    if app.show_plot {
-        draw_plot_overlay(f, app, &colors);
-    }
+    draw_overlay(f, &app.overlay, &colors);
 }
 
 fn draw_tree(f: &mut Frame<'_>, app: &mut App, area: Rect, colors: &ThemeColors) {
@@ -180,35 +178,6 @@ fn draw_welcome(f: &mut Frame<'_>, area: Rect, colors: &ThemeColors) {
     f.render_widget(paragraph, area);
 }
 
-fn draw_plot_overlay(f: &mut Frame<'_>, _app: &App, colors: &ThemeColors) {
-    let area = centered_rect(80, 80, f.area());
-
-    let lines = vec![
-        Line::from(Span::styled(
-            "Plot Visualization",
-            Style::default()
-                .fg(colors.heading)
-                .add_modifier(Modifier::BOLD),
-        )),
-        Line::from(""),
-        Line::from("Plot functionality would go here"),
-        Line::from("(Requires a terminal plotting library)"),
-        Line::from(""),
-        Line::from("Press Esc or p to close"),
-    ];
-
-    let paragraph = Paragraph::new(lines)
-        .block(
-            Block::default()
-                .title(" Plot ")
-                .borders(Borders::ALL)
-                .border_style(Style::default().fg(colors.border))
-                .style(Style::default().bg(colors.bg)),
-        )
-        .style(Style::default().fg(colors.text));
-
-    f.render_widget(paragraph, area);
-}
 
 fn format_node_details(node: &DataNode, colors: &ThemeColors) -> Vec<Line<'static>> {
     let mut lines = vec![];
@@ -303,22 +272,3 @@ fn format_node_details(node: &DataNode, colors: &ThemeColors) -> Vec<Line<'stati
     lines
 }
 
-fn centered_rect(percent_x: u16, percent_y: u16, r: Rect) -> Rect {
-    let popup_layout = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([
-            Constraint::Percentage((100 - percent_y) / 2),
-            Constraint::Percentage(percent_y),
-            Constraint::Percentage((100 - percent_y) / 2),
-        ])
-        .split(r);
-
-    Layout::default()
-        .direction(Direction::Horizontal)
-        .constraints([
-            Constraint::Percentage((100 - percent_x) / 2),
-            Constraint::Percentage(percent_x),
-            Constraint::Percentage((100 - percent_x) / 2),
-        ])
-        .split(popup_layout[1])[1]
-}

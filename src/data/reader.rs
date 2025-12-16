@@ -103,6 +103,32 @@ impl DataReader {
     }
 
     fn attr_value_to_string(attr: &netcdf::Attribute<'_>) -> String {
-        format!("{:?}", attr)
+        use netcdf::AttributeValue;
+
+        match attr.value() {
+            Ok(AttributeValue::Uchar(v)) => format!("{}", v),
+            Ok(AttributeValue::Schar(v)) => format!("{}", v),
+            Ok(AttributeValue::Ushort(v)) => format!("{}", v),
+            Ok(AttributeValue::Short(v)) => format!("{}", v),
+            Ok(AttributeValue::Uint(v)) => format!("{}", v),
+            Ok(AttributeValue::Int(v)) => format!("{}", v),
+            Ok(AttributeValue::Ulonglong(v)) => format!("{}", v),
+            Ok(AttributeValue::Longlong(v)) => format!("{}", v),
+            Ok(AttributeValue::Float(v)) => format!("{}", v),
+            Ok(AttributeValue::Double(v)) => format!("{}", v),
+            Ok(AttributeValue::Str(v)) => v,
+            Ok(AttributeValue::Uchars(v)) => format!("{:?}", v),
+            Ok(AttributeValue::Schars(v)) => format!("{:?}", v),
+            Ok(AttributeValue::Ushorts(v)) => format!("{:?}", v),
+            Ok(AttributeValue::Shorts(v)) => format!("{:?}", v),
+            Ok(AttributeValue::Uints(v)) => format!("{:?}", v),
+            Ok(AttributeValue::Ints(v)) => format!("{:?}", v),
+            Ok(AttributeValue::Ulonglongs(v)) => format!("{:?}", v),
+            Ok(AttributeValue::Longlongs(v)) => format!("{:?}", v),
+            Ok(AttributeValue::Floats(v)) => format!("{:?}", v),
+            Ok(AttributeValue::Doubles(v)) => format!("{:?}", v),
+            Ok(AttributeValue::Strs(v)) => v.join(", "),
+            Err(_) => format!("{:?}", attr),
+        }
     }
 }
