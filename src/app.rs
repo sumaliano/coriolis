@@ -1,6 +1,7 @@
 //! Application state and logic.
 
 use std::path::PathBuf;
+use std::fs;
 
 use crate::data::{read_variable, DataNode, DataReader, DatasetInfo};
 use crate::navigation::{SearchState, TreeState};
@@ -33,6 +34,17 @@ impl Theme {
     }
 }
 
+/// File browser entry.
+#[derive(Debug, Clone)]
+pub struct FileEntry {
+    /// Full path to the file/directory.
+    pub path: PathBuf,
+    /// Display name.
+    pub name: String,
+    /// Is this entry a directory?
+    pub is_dir: bool,
+}
+
 /// Application state.
 #[derive(Debug)]
 pub struct App {
@@ -58,11 +70,21 @@ pub struct App {
     pub loading: bool,
     /// Error message.
     pub error_message: Option<String>,
+    /// File browser mode.
+    pub file_browser_mode: bool,
+    /// Current directory being browsed.
+    pub current_dir: PathBuf,
+    /// File entries in current directory.
+    pub file_entries: Vec<FileEntry>,
+    /// File browser cursor position.
+    pub file_browser_cursor: usize,
 }
 
 impl App {
     /// Create a new application instance.
     pub fn new(file_path: Option<PathBuf>) -> Self {
+        let current_dir = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+
         let mut app = Self {
             file_path: file_path.clone(),
             dataset: None,
@@ -75,11 +97,32 @@ impl App {
             theme: Theme::GruvboxDark,
             loading: false,
             error_message: None,
+            file_browser_mode: false,
+            current_dir: current_dir.clone(),
+            file_entries: Vec::new(),
+            file_browser_cursor: 0,
         };
 
-        // Load file if provided
-        if let Some(path) = file_path {
-            app.load_file(path);
+        // Check if we need to show file browser
+        match file_path {
+            Some(path) if path.is_dir() => {
+                // Directory provided, show browser
+                app.current_dir = path;
+                app.load_directory();
+                app.file_browser_mode = true;
+            }
+            Some(path) if path.is_file() => {
+                // File provided, load it
+                app.load_file(path);
+            }
+            None => {
+                // No path provided, show browser
+                app.load_directory();
+                app.file_browser_mode = true;
+            }
+            _ => {
+                app.error_message = Some("Invalid path provided".to_string());
+            }
         }
 
         app
@@ -198,5 +241,106 @@ impl App {
     pub fn close_overlay(&mut self) {
         self.overlay.close();
         self.search.cancel();
+    }
+
+    /// Load directory contents for file browser.
+    pub fn load_directory(&mut self) {
+        self.file_entries.clear();
+
+        // Add parent directory entry if not at root
+        if self.current_dir.parent().is_some() {
+            self.file_entries.push(FileEntry {
+                path: self.current_dir.parent().unwrap().to_path_buf(),
+                name: "..".to_string(),
+                is_dir: true,
+            });
+        }
+
+        match fs::read_dir(&self.current_dir) {
+            Ok(entries) => {
+                let mut dirs = Vec::new();
+                let mut files = Vec::new();
+
+                for entry in entries.flatten() {
+                    if let Ok(metadata) = entry.metadata() {
+                        let path = entry.path();
+                        let name = entry.file_name().to_string_lossy().to_string();
+
+                        // Skip hidden files
+                        if name.starts_with('.') {
+                            continue;
+                        }
+
+                        let file_entry = FileEntry {
+                            path: path.clone(),
+                            name,
+                            is_dir: metadata.is_dir(),
+                        };
+
+                        if metadata.is_dir() {
+                            dirs.push(file_entry);
+                        } else {
+                            // Only show netcdf files
+                            if let Some(ext) = path.extension() {
+                                let ext_str = ext.to_string_lossy();
+                                if ext_str == "nc" || ext_str == "nc4" || ext_str == "netcdf" {
+                                    files.push(file_entry);
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Sort directories and files alphabetically
+                dirs.sort_by(|a, b| a.name.cmp(&b.name));
+                files.sort_by(|a, b| a.name.cmp(&b.name));
+
+                // Add directories first, then files
+                self.file_entries.extend(dirs);
+                self.file_entries.extend(files);
+
+                self.status = format!("Browsing: {}", self.current_dir.display());
+            }
+            Err(e) => {
+                self.error_message = Some(format!("Failed to read directory: {}", e));
+                self.status = "Error reading directory".to_string();
+            }
+        }
+
+        // Reset cursor
+        self.file_browser_cursor = 0;
+    }
+
+    /// Navigate to selected file/directory in browser.
+    pub fn browser_select(&mut self) {
+        if self.file_entries.is_empty() {
+            return;
+        }
+
+        let entry = &self.file_entries[self.file_browser_cursor];
+
+        if entry.is_dir {
+            // Navigate to directory
+            self.current_dir = entry.path.clone();
+            self.load_directory();
+        } else {
+            // Load file and exit browser mode
+            self.file_browser_mode = false;
+            self.load_file(entry.path.clone());
+        }
+    }
+
+    /// Move cursor up in file browser.
+    pub fn browser_up(&mut self) {
+        if self.file_browser_cursor > 0 {
+            self.file_browser_cursor -= 1;
+        }
+    }
+
+    /// Move cursor down in file browser.
+    pub fn browser_down(&mut self) {
+        if self.file_browser_cursor + 1 < self.file_entries.len() {
+            self.file_browser_cursor += 1;
+        }
     }
 }

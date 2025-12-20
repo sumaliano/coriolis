@@ -15,10 +15,10 @@ use ratatui::{
 pub(super) fn draw_browser(f: &mut Frame<'_>, app: &mut App) {
     let colors = ThemeColors::from_theme(&app.theme);
 
-    // Main layout
+    // Main layout with status bar and key map bar
     let chunks = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([Constraint::Min(1), Constraint::Length(1)])
+        .constraints([Constraint::Min(1), Constraint::Length(1), Constraint::Length(1)])
         .split(f.area());
 
     // Content area
@@ -37,11 +37,20 @@ pub(super) fn draw_browser(f: &mut Frame<'_>, app: &mut App) {
     // Status bar
     draw_status(f, app, chunks[1], &colors);
 
+    // Key map bar
+    draw_keymap(f, app, chunks[2], &colors);
+
     // Overlays
     draw_overlay(f, &app.overlay, &colors);
 }
 
 fn draw_tree(f: &mut Frame<'_>, app: &mut App, area: Rect, colors: &ThemeColors) {
+    // Show file browser if in browser mode
+    if app.file_browser_mode {
+        draw_file_browser(f, app, area, colors);
+        return;
+    }
+
     let Some(ref _dataset) = app.dataset else {
         draw_welcome(f, area, colors);
         return;
@@ -125,7 +134,7 @@ fn draw_details(f: &mut Frame<'_>, app: &App, area: Rect, colors: &ThemeColors) 
 
 fn draw_status(f: &mut Frame<'_>, app: &App, area: Rect, colors: &ThemeColors) {
     let text = if app.search.is_active() {
-        format!("Search: {}", app.search.buffer())
+        format!("/{}", app.search.buffer())
     } else if app.search.match_count() > 0 {
         format!(
             "Match {}/{} for '{}'",
@@ -141,6 +150,58 @@ fn draw_status(f: &mut Frame<'_>, app: &App, area: Rect, colors: &ThemeColors) {
         Paragraph::new(text).style(Style::default().fg(colors.status_fg).bg(colors.status_bg));
 
     f.render_widget(paragraph, area);
+}
+
+fn draw_keymap(f: &mut Frame<'_>, app: &App, area: Rect, colors: &ThemeColors) {
+    let keymap_text = if app.file_browser_mode {
+        "jk/↑↓:nav | Enter/l:select | h:parent | q:quit"
+    } else if app.overlay.visible {
+        "hjkl:pan | Tab:view | +-:slice | []:dim | q/Esc:close"
+    } else if app.search.is_active() {
+        "Enter:search | Esc:cancel | Type to search"
+    } else {
+        "q:quit | hjkl:nav | /:search | n/N:next/prev | t:preview | p:plot | c/y:copy | T:theme | ?:help"
+    };
+
+    let paragraph = Paragraph::new(keymap_text)
+        .style(Style::default().fg(colors.text).bg(colors.bg));
+
+    f.render_widget(paragraph, area);
+}
+
+fn draw_file_browser(f: &mut Frame<'_>, app: &App, area: Rect, colors: &ThemeColors) {
+    let items: Vec<ListItem<'_>> = app
+        .file_entries
+        .iter()
+        .enumerate()
+        .map(|(idx, entry)| {
+            let icon = if entry.is_dir { "📁" } else { "📄" };
+            let text = format!("{} {}", icon, entry.name);
+
+            let style = if idx == app.file_browser_cursor {
+                Style::default()
+                    .fg(colors.cursor_fg)
+                    .bg(colors.cursor_bg)
+                    .add_modifier(Modifier::BOLD)
+            } else {
+                Style::default().fg(colors.text)
+            };
+
+            ListItem::new(Line::from(text)).style(style)
+        })
+        .collect();
+
+    let title = format!(" File Browser: {} ", app.current_dir.display());
+
+    let list = List::new(items).block(
+        Block::default()
+            .title(title)
+            .borders(Borders::ALL)
+            .border_style(Style::default().fg(colors.border))
+            .style(Style::default().bg(colors.bg)),
+    );
+
+    f.render_widget(list, area);
 }
 
 fn draw_welcome(f: &mut Frame<'_>, area: Rect, colors: &ThemeColors) {

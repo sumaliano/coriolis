@@ -25,34 +25,40 @@ use tracing_subscriber::FmtSubscriber;
 #[command(name = "coriolis")]
 #[command(about = "A terminal-based netCDF data viewer", long_about = None)]
 struct Args {
-    /// Path to the NetCDF file to open
+    /// Path to the NetCDF file or directory to open
     file: Option<PathBuf>,
+
+    /// Enable logging to specified file
+    #[arg(long)]
+    log: Option<PathBuf>,
 }
 
 fn main() -> Result<()> {
-    // Set up logging
-    let subscriber = FmtSubscriber::builder()
-        .with_max_level(Level::DEBUG)
-        .with_writer(|| {
-            std::fs::OpenOptions::new()
-                .create(true)
-                .write(true)
-                .truncate(true)
-                .append(false)
-                .open("coriolis.log")
-                .expect("Failed to open log file")
-        })
-        .finish();
-    tracing::subscriber::set_global_default(subscriber)?;
-
-    tracing::info!("Starting Coriolis");
-
     let args = Args::parse();
 
-    // Validate file if provided
+    // Set up logging if --log option is provided
+    if let Some(log_path) = &args.log {
+        let log_path = log_path.clone();
+        let subscriber = FmtSubscriber::builder()
+            .with_max_level(Level::DEBUG)
+            .with_writer(move || {
+                std::fs::OpenOptions::new()
+                    .create(true)
+                    .write(true)
+                    .truncate(true)
+                    .append(false)
+                    .open(&log_path)
+                    .expect("Failed to open log file")
+            })
+            .finish();
+        tracing::subscriber::set_global_default(subscriber)?;
+        tracing::info!("Starting Coriolis");
+    }
+
+    // Validate path if provided
     if let Some(ref path) = args.file {
         if !path.exists() {
-            eprintln!("Error: File not found: {}", path.display());
+            eprintln!("Error: Path not found: {}", path.display());
             std::process::exit(1);
         }
     }
@@ -77,7 +83,9 @@ fn main() -> Result<()> {
         eprintln!("Error: {}", err);
     }
 
-    tracing::info!("Coriolis exited");
+    if args.log.is_some() {
+        tracing::info!("Coriolis exited");
+    }
 
     Ok(())
 }
@@ -165,6 +173,43 @@ fn run_app<B: ratatui::backend::Backend>(terminal: &mut Terminal<B>, mut app: Ap
                         KeyCode::Esc => app.search.cancel(),
                         KeyCode::Backspace => app.search.backspace(),
                         KeyCode::Char(c) => app.search.input(c),
+                        _ => {}
+                    }
+                    continue;
+                }
+
+                // File browser mode
+                if app.file_browser_mode {
+                    match (key.modifiers, key.code) {
+                        // Quit
+                        (KeyModifiers::NONE, KeyCode::Char('q')) => return Ok(()),
+
+                        // Navigation
+                        (KeyModifiers::NONE, KeyCode::Up)
+                        | (KeyModifiers::NONE, KeyCode::Char('k')) => {
+                            app.browser_up();
+                        }
+                        (KeyModifiers::NONE, KeyCode::Down)
+                        | (KeyModifiers::NONE, KeyCode::Char('j')) => {
+                            app.browser_down();
+                        }
+
+                        // Select/Open
+                        (KeyModifiers::NONE, KeyCode::Enter)
+                        | (KeyModifiers::NONE, KeyCode::Char('l'))
+                        | (KeyModifiers::NONE, KeyCode::Right) => {
+                            app.browser_select();
+                        }
+
+                        // Go to parent directory
+                        (KeyModifiers::NONE, KeyCode::Char('h'))
+                        | (KeyModifiers::NONE, KeyCode::Left) => {
+                            if let Some(parent) = app.current_dir.parent() {
+                                app.current_dir = parent.to_path_buf();
+                                app.load_directory();
+                            }
+                        }
+
                         _ => {}
                     }
                     continue;

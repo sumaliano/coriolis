@@ -36,7 +36,7 @@ impl DataReader {
                 .insert(attr.name().to_string(), Self::attr_value_to_string(&attr));
         }
 
-        // Read dimensions
+        // Read dimensions at root level
         let mut dims_node = DataNode::new(
             "Dimensions".to_string(),
             "/dimensions".to_string(),
@@ -58,48 +58,118 @@ impl DataReader {
             root_node.add_child(dims_node);
         }
 
-        // Read variables
+        // Read variables at root level
         for var in file.variables() {
-            let var_name = var.name();
-            let mut var_node = DataNode::new(
-                var_name.to_string(),
-                format!("/variables/{}", var_name),
-                NodeType::Variable,
-            );
-
-            // Get shape and type
-            var_node.shape = Some(
-                var.dimensions()
-                    .iter()
-                    .map(|d: &netcdf::Dimension<'_>| d.len())
-                    .collect(),
-            );
-            var_node.dtype = Some(format!("{:?}", var.vartype()));
-
-            // Dimension names
-            let dim_names: Vec<String> = var
-                .dimensions()
-                .iter()
-                .map(|d: &netcdf::Dimension<'_>| d.name().to_string())
-                .collect();
-            var_node
-                .metadata
-                .insert("dims".to_string(), dim_names.join(", "));
-
-            // Read attributes
-            for attr in var.attributes() {
-                var_node
-                    .attributes
-                    .insert(attr.name().to_string(), Self::attr_value_to_string(&attr));
-            }
-
-            root_node.add_child(var_node);
+            root_node.add_child(Self::read_variable(&var, ""));
         }
 
-        // Note: NetCDF4 groups reading requires API verification
-        // Groups iteration may work differently in this netcdf version
+        // Read groups recursively
+        if let Ok(groups) = file.groups() {
+            for group in groups {
+                root_node.add_child(Self::read_group(&group, ""));
+            }
+        }
 
         Ok(DatasetInfo::new(path.to_path_buf(), root_node))
+    }
+
+    fn read_group(group: &netcdf::Group<'_>, parent_path: &str) -> DataNode {
+        let group_name = group.name();
+        let group_path = if parent_path.is_empty() {
+            format!("/{}", group_name)
+        } else {
+            format!("{}/{}", parent_path, group_name)
+        };
+
+        let mut group_node = DataNode::new(
+            group_name.to_string(),
+            group_path.clone(),
+            NodeType::Group,
+        );
+
+        // Read group attributes
+        for attr in group.attributes() {
+            group_node
+                .attributes
+                .insert(attr.name().to_string(), Self::attr_value_to_string(&attr));
+        }
+
+        // Read dimensions in this group
+        let mut dims_node = DataNode::new(
+            "Dimensions".to_string(),
+            format!("{}/dimensions", group_path),
+            NodeType::Group,
+        );
+        for dim in group.dimensions() {
+            let dim_name = dim.name();
+            let mut dim_node = DataNode::new(
+                format!("{} ({})", dim_name, dim.len()),
+                format!("{}/dimensions/{}", group_path, dim_name),
+                NodeType::Dimension,
+            );
+            dim_node
+                .metadata
+                .insert("length".to_string(), dim.len().to_string());
+            dims_node.add_child(dim_node);
+        }
+        if !dims_node.children.is_empty() {
+            group_node.add_child(dims_node);
+        }
+
+        // Read variables in this group
+        for var in group.variables() {
+            group_node.add_child(Self::read_variable(&var, &group_path));
+        }
+
+        // Read child groups recursively
+        for child_group in group.groups() {
+            group_node.add_child(Self::read_group(&child_group, &group_path));
+        }
+
+        group_node
+    }
+
+    fn read_variable(var: &netcdf::Variable<'_>, parent_path: &str) -> DataNode {
+        let var_name = var.name();
+        let var_path = if parent_path.is_empty() {
+            format!("/{}", var_name)
+        } else {
+            format!("{}/{}", parent_path, var_name)
+        };
+
+        let mut var_node = DataNode::new(
+            var_name.to_string(),
+            var_path,
+            NodeType::Variable,
+        );
+
+        // Get shape and type
+        var_node.shape = Some(
+            var.dimensions()
+                .iter()
+                .map(|d: &netcdf::Dimension<'_>| d.len())
+                .collect(),
+        );
+        var_node.dtype = Some(format!("{:?}", var.vartype()));
+
+        // Dimension names
+        let dim_names: Vec<String> = var
+            .dimensions()
+            .iter()
+            .map(|d: &netcdf::Dimension<'_>| d.name().to_string())
+            .collect();
+        var_node
+            .metadata
+            .insert("dims".to_string(), dim_names.join(", "));
+
+        // Read attributes
+        for attr in var.attributes() {
+            var_node
+                .attributes
+                .insert(attr.name().to_string(), Self::attr_value_to_string(&attr));
+        }
+
+        var_node
     }
 
     fn attr_value_to_string(attr: &netcdf::Attribute<'_>) -> String {
