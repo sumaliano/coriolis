@@ -286,7 +286,7 @@ fn run_app<B: ratatui::backend::Backend>(terminal: &mut Terminal<B>, mut app: Ap
 
                     // Features
                     (KeyModifiers::NONE, KeyCode::Char('p')) => {
-                        app.toggle_plot();
+                        app.toggle_data_viewer();
                     },
                     (KeyModifiers::NONE, KeyCode::Char('t')) => {
                         app.toggle_preview();

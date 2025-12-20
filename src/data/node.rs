@@ -11,8 +11,6 @@ pub enum NodeType {
     Group,
     /// Variable node.
     Variable,
-    /// Dimension node.
-    Dimension,
 }
 
 /// A node in the NetCDF data tree.
@@ -71,8 +69,7 @@ impl DataNode {
         let icon = match self.node_type {
             NodeType::Root => "🏠",
             NodeType::Group => "📂",
-            NodeType::Variable => "🌡️",
-            NodeType::Dimension => "📏",
+            NodeType::Variable => "🌡",
         };
 
         let suffix = match self.node_type {
@@ -124,7 +121,6 @@ impl DataNode {
             NodeType::Group | NodeType::Root => {
                 format!(" ({})", self.children.len())
             },
-            NodeType::Dimension => String::new(),
         };
 
         format!("{} {}{}", icon, self.name, suffix)

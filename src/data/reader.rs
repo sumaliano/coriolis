@@ -144,7 +144,8 @@ impl DataReader {
         var_node
     }
 
-    fn attr_value_to_string(attr: &netcdf::Attribute<'_>) -> String {
+    /// Convert a NetCDF attribute value to a string representation.
+    pub fn attr_value_to_string(attr: &netcdf::Attribute<'_>) -> String {
         use netcdf::AttributeValue;
 
         match attr.value() {

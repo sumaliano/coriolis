@@ -176,7 +176,7 @@ impl App {
     }
 
     /// Toggle data overlay for viewing variable content.
-    pub fn toggle_plot(&mut self) {
+    pub fn toggle_data_viewer(&mut self) {
         // If overlay is already visible, close it
         if self.overlay.visible {
             self.overlay.close();

@@ -263,8 +263,8 @@ pub fn draw_overlay(f: &mut Frame<'_>, state: &OverlayState, colors: &ThemeColor
     let block = Block::default()
         .title(format!(" Data Viewer - {} ", state.view_mode.name()))
         .borders(Borders::ALL)
-        .border_style(Style::default().fg(colors.border))
-        .style(Style::default().bg(colors.bg));
+        .border_style(Style::default().fg(colors.bg2))
+        .style(Style::default().bg(colors.bg0));
 
     let inner = block.inner(area);
     f.render_widget(block, area);
@@ -279,14 +279,14 @@ pub fn draw_overlay(f: &mut Frame<'_>, state: &OverlayState, colors: &ThemeColor
         let has_selectors = var.ndim() > 2;
         let constraints = if has_selectors {
             vec![
-                Constraint::Length(3), // Header
+                Constraint::Length(4), // Header (2 lines + border)
                 Constraint::Min(5),    // Content
                 Constraint::Length(3), // Dimension selectors
                 Constraint::Length(2), // Footer
             ]
         } else {
             vec![
-                Constraint::Length(3), // Header
+                Constraint::Length(4), // Header (2 lines + border)
                 Constraint::Min(5),    // Content
                 Constraint::Length(2), // Footer
             ]
@@ -318,21 +318,43 @@ pub fn draw_overlay(f: &mut Frame<'_>, state: &OverlayState, colors: &ThemeColor
 }
 
 fn draw_header(f: &mut Frame<'_>, area: Rect, var: &LoadedVariable, colors: &ThemeColors) {
+    let mut lines = vec![];
+
+    // Variable name and type
     let shape_str = format!("{:?}", var.shape);
     let dims_str = var.dim_names.join(", ");
+    lines.push(Line::from(Span::styled(
+        format!("{} ({}) | Shape: {} | Dims: [{}]", var.name, var.dtype, shape_str, dims_str),
+        Style::default().fg(colors.yellow).add_modifier(Modifier::BOLD),
+    )));
 
-    let info = format!(
-        "{} | Shape: {} | Dims: [{}]",
-        var.name, shape_str, dims_str
-    );
+    // Statistics
+    let mut stats = Vec::new();
+    if let Some((min, max)) = var.data.min_max() {
+        stats.push(format!("Min: {:.6}", min));
+        stats.push(format!("Max: {:.6}", max));
+    }
+    if let Some(mean) = var.data.mean() {
+        stats.push(format!("Mean: {:.6}", mean));
+    }
+    if let Some(std) = var.data.std() {
+        stats.push(format!("Std: {:.6}", std));
+    }
+    stats.push(format!("Valid: {}", var.data.valid_count()));
 
-    let paragraph = Paragraph::new(info)
-        .style(Style::default().fg(colors.heading).add_modifier(Modifier::BOLD))
+    if !stats.is_empty() {
+        lines.push(Line::from(Span::styled(
+            format!("Statistics: {}", stats.join(" | ")),
+            Style::default().fg(colors.fg0),
+        )));
+    }
+
+    let paragraph = Paragraph::new(lines)
         .alignment(Alignment::Center)
         .block(
             Block::default()
                 .borders(Borders::BOTTOM)
-                .border_style(Style::default().fg(colors.border)),
+                .border_style(Style::default().fg(colors.bg2)),
         );
 
     f.render_widget(paragraph, area);
@@ -362,7 +384,7 @@ fn draw_table_view(
     for row_idx in start_row..((start_row + visible_rows).min(total_rows)) {
         let mut cells = Vec::new();
         // Row header
-        cells.push(Cell::from(format!("{:>4}", row_idx)).style(Style::default().fg(colors.label)));
+        cells.push(Cell::from(format!("{:>4}", row_idx)).style(Style::default().fg(colors.green)));
 
         for col_idx in start_col..((start_col + visible_cols).min(total_cols)) {
             let value = if var.ndim() == 0 {
@@ -378,18 +400,18 @@ fn draw_table_view(
             };
 
             let formatted = format_value(value);
-            cells.push(Cell::from(formatted).style(Style::default().fg(colors.value)));
+            cells.push(Cell::from(formatted).style(Style::default().fg(colors.aqua)));
         }
 
         rows.push(Row::new(cells));
     }
 
     // Build header
-    let mut header_cells = vec![Cell::from("").style(Style::default().fg(colors.label))];
+    let mut header_cells = vec![Cell::from("").style(Style::default().fg(colors.green))];
     for col_idx in start_col..((start_col + visible_cols).min(total_cols)) {
         header_cells.push(
             Cell::from(format!("{:>10}", col_idx))
-                .style(Style::default().fg(colors.label).add_modifier(Modifier::BOLD)),
+                .style(Style::default().fg(colors.green).add_modifier(Modifier::BOLD)),
         );
     }
 
@@ -402,7 +424,7 @@ fn draw_table_view(
     let table = Table::new(rows, widths)
         .header(Row::new(header_cells).style(Style::default().add_modifier(Modifier::BOLD)))
         .block(Block::default())
-        .style(Style::default().fg(colors.text));
+        .style(Style::default().fg(colors.fg0));
 
     f.render_widget(table, area);
 
@@ -443,7 +465,7 @@ fn draw_plot1d_view(
 
     if data.is_empty() {
         let para = Paragraph::new("No data to display")
-            .style(Style::default().fg(colors.text))
+            .style(Style::default().fg(colors.fg0))
             .alignment(Alignment::Center);
         f.render_widget(para, area);
         return;
@@ -500,7 +522,7 @@ fn draw_plot1d_view(
             }
         }
 
-        lines.push(Line::from(Span::styled(chars, Style::default().fg(colors.value))));
+        lines.push(Line::from(Span::styled(chars, Style::default().fg(colors.aqua))));
     }
 
     lines.push(Line::from(format!("{:.2e}", min_val)));
@@ -512,7 +534,7 @@ fn draw_plot1d_view(
     )));
 
     let paragraph = Paragraph::new(lines)
-        .style(Style::default().fg(colors.text))
+        .style(Style::default().fg(colors.fg0))
         .block(Block::default());
 
     f.render_widget(paragraph, area);
@@ -527,7 +549,7 @@ fn draw_heatmap_view(
 ) {
     if var.ndim() < 2 {
         let para = Paragraph::new("Heatmap requires 2D+ data")
-            .style(Style::default().fg(colors.text))
+            .style(Style::default().fg(colors.fg0))
             .alignment(Alignment::Center);
         f.render_widget(para, area);
         return;
@@ -538,7 +560,7 @@ fn draw_heatmap_view(
 
     if data_2d.is_empty() || data_2d[0].is_empty() {
         let para = Paragraph::new("No data to display")
-            .style(Style::default().fg(colors.text))
+            .style(Style::default().fg(colors.fg0))
             .alignment(Alignment::Center);
         f.render_widget(para, area);
         return;
@@ -577,11 +599,11 @@ fn draw_heatmap_view(
     // Add colorbar legend
     lines.push(Line::from(vec![
         Span::raw("Low "),
-        Span::styled("\u{2591}\u{2592}\u{2593}\u{2588}", Style::default().fg(colors.value)),
+        Span::styled("\u{2591}\u{2592}\u{2593}\u{2588}", Style::default().fg(colors.aqua)),
         Span::raw(" High | "),
         Span::styled(
             format!("[{:.2e}, {:.2e}]", min_val, max_val),
-            Style::default().fg(colors.label),
+            Style::default().fg(colors.green),
         ),
     ]));
 
@@ -612,7 +634,7 @@ fn draw_heatmap_view(
             }
         }
 
-        lines.push(Line::from(Span::styled(chars, Style::default().fg(colors.value))));
+        lines.push(Line::from(Span::styled(chars, Style::default().fg(colors.aqua))));
     }
 
     // Add axis labels
@@ -621,7 +643,7 @@ fn draw_heatmap_view(
     lines.push(Line::from(format!("Y: {} | X: {}", dim1_name, dim2_name)));
 
     let paragraph = Paragraph::new(lines)
-        .style(Style::default().fg(colors.text))
+        .style(Style::default().fg(colors.fg0))
         .block(Block::default());
 
     f.render_widget(paragraph, area);
@@ -635,7 +657,7 @@ fn draw_dimension_selectors(
     colors: &ThemeColors,
 ) {
     let mut spans = Vec::new();
-    spans.push(Span::styled("Slices: ", Style::default().fg(colors.label)));
+    spans.push(Span::styled("Slices: ", Style::default().fg(colors.green)));
 
     for (i, (dim_name, &size)) in var.dim_names.iter().zip(var.shape.iter()).enumerate() {
         // Skip display dimensions
@@ -648,11 +670,11 @@ fn draw_dimension_selectors(
 
         let style = if is_active {
             Style::default()
-                .fg(colors.cursor_fg)
-                .bg(colors.cursor_bg)
+                .fg(colors.bg0)
+                .bg(colors.yellow)
                 .add_modifier(Modifier::BOLD)
         } else {
-            Style::default().fg(colors.value)
+            Style::default().fg(colors.aqua)
         };
 
         spans.push(Span::styled(
@@ -666,7 +688,7 @@ fn draw_dimension_selectors(
         .block(
             Block::default()
                 .borders(Borders::TOP)
-                .border_style(Style::default().fg(colors.border)),
+                .border_style(Style::default().fg(colors.bg2)),
         );
 
     f.render_widget(paragraph, area);
@@ -675,7 +697,7 @@ fn draw_dimension_selectors(
 fn draw_footer(f: &mut Frame<'_>, area: Rect, colors: &ThemeColors) {
     let help = "Tab: View | hjkl/Arrows: Pan | [/]: Dim | +/-: Slice | Esc: Close";
     let paragraph = Paragraph::new(help)
-        .style(Style::default().fg(colors.label))
+        .style(Style::default().fg(colors.green))
         .alignment(Alignment::Center);
     f.render_widget(paragraph, area);
 }
@@ -684,16 +706,16 @@ fn draw_error(f: &mut Frame<'_>, area: Rect, error: &str, colors: &ThemeColors) 
     let lines = vec![
         Line::from(Span::styled(
             "Error Loading Variable",
-            Style::default().fg(colors.heading).add_modifier(Modifier::BOLD),
+            Style::default().fg(colors.yellow).add_modifier(Modifier::BOLD),
         )),
         Line::from(""),
-        Line::from(Span::styled(error, Style::default().fg(colors.text))),
+        Line::from(Span::styled(error, Style::default().fg(colors.fg0))),
         Line::from(""),
         Line::from("Press Esc to close"),
     ];
 
     let paragraph = Paragraph::new(lines)
-        .style(Style::default().fg(colors.text))
+        .style(Style::default().fg(colors.fg0))
         .alignment(Alignment::Center)
         .wrap(Wrap { trim: true });
 

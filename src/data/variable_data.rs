@@ -95,6 +95,59 @@ impl VariableData {
             None
         }
     }
+
+    /// Get mean value.
+    pub fn mean(&self) -> Option<f64> {
+        let data = self.to_f64();
+        if data.is_empty() {
+            return None;
+        }
+
+        let mut sum = 0.0;
+        let mut count = 0;
+
+        for &v in &data {
+            if v.is_finite() {
+                sum += v;
+                count += 1;
+            }
+        }
+
+        if count > 0 {
+            Some(sum / count as f64)
+        } else {
+            None
+        }
+    }
+
+    /// Get standard deviation.
+    pub fn std(&self) -> Option<f64> {
+        let mean = self.mean()?;
+        let data = self.to_f64();
+
+        let mut sum_sq_diff = 0.0;
+        let mut count = 0;
+
+        for &v in &data {
+            if v.is_finite() {
+                let diff = v - mean;
+                sum_sq_diff += diff * diff;
+                count += 1;
+            }
+        }
+
+        if count > 1 {
+            Some((sum_sq_diff / (count - 1) as f64).sqrt())
+        } else {
+            None
+        }
+    }
+
+    /// Count valid (finite) values.
+    pub fn valid_count(&self) -> usize {
+        let data = self.to_f64();
+        data.iter().filter(|v| v.is_finite()).count()
+    }
 }
 
 /// Loaded variable with its data and metadata.
@@ -109,6 +162,11 @@ pub struct LoadedVariable {
     pub shape: Vec<usize>,
     /// Dimension names.
     pub dim_names: Vec<String>,
+    /// Variable attributes.
+    #[allow(dead_code)]
+    pub attributes: std::collections::HashMap<String, String>,
+    /// Variable data type.
+    pub dtype: String,
     /// The actual data (flattened).
     pub data: VariableData,
 }
@@ -203,18 +261,34 @@ pub fn read_variable(file_path: &Path, var_path: &str) -> Result<LoadedVariable>
     let file = netcdf::open(file_path)
         .map_err(|e| CoriolisError::NetCDF(format!("Failed to open file: {}", e)))?;
 
-    // Extract variable name from path (e.g., "/variables/temperature" -> "temperature")
+    // Extract variable name from path
     let var_name = var_path
         .rsplit('/')
         .next()
         .ok_or_else(|| CoriolisError::NetCDF("Invalid variable path".to_string()))?;
 
+    // For variables in groups, use the full path (without leading /)
+    // e.g., "/data/View_000/latitude" -> "data/View_000/latitude"
+    let netcdf_path = var_path.trim_start_matches('/');
+
     let var = file
-        .variable(var_name)
-        .ok_or_else(|| CoriolisError::NetCDF(format!("Variable '{}' not found", var_name)))?;
+        .variable(netcdf_path)
+        .ok_or_else(|| CoriolisError::NetCDF(format!("Variable '{}' not found at path '{}'", var_name, netcdf_path)))?;
 
     let shape: Vec<usize> = var.dimensions().iter().map(|d| d.len()).collect();
     let dim_names: Vec<String> = var.dimensions().iter().map(|d| d.name().to_string()).collect();
+
+    // Read attributes
+    let mut attributes = std::collections::HashMap::new();
+    for attr in var.attributes() {
+        attributes.insert(
+            attr.name().to_string(),
+            crate::data::reader::DataReader::attr_value_to_string(&attr),
+        );
+    }
+
+    // Get data type
+    let dtype = format!("{:?}", var.vartype()).replace("NcVariableType::", "").to_lowercase();
 
     // Read the data based on type
     let data = read_variable_data(&var)?;
@@ -224,6 +298,8 @@ pub fn read_variable(file_path: &Path, var_path: &str) -> Result<LoadedVariable>
         path: var_path.to_string(),
         shape,
         dim_names,
+        attributes,
+        dtype,
         data,
     })
 }
