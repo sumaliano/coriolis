@@ -77,8 +77,46 @@ impl DataNode {
 
         let suffix = match self.node_type {
             NodeType::Variable => {
-                if let (Some(shape), Some(dtype)) = (&self.shape, &self.dtype) {
-                    format!(" {:?} {}", shape, dtype)
+                // Format: name(dim1=size1, dim2=size2); [ND] type
+                let mut parts = Vec::new();
+
+                // Dimension info
+                if let Some(dim_str) = self.metadata.get("dims") {
+                    if !dim_str.is_empty() {
+                        let dims: Vec<&str> = dim_str.split(", ").collect();
+                        let mut dim_info = Vec::new();
+
+                        if let Some(shape) = &self.shape {
+                            for (i, dim_name) in dims.iter().enumerate() {
+                                if let Some(&size) = shape.get(i) {
+                                    dim_info.push(format!("{}={}", dim_name, size));
+                                }
+                            }
+                        }
+
+                        if !dim_info.is_empty() {
+                            parts.push(format!("({})", dim_info.join(", ")));
+                        }
+                    }
+                }
+
+                // Dimensionality
+                if let Some(shape) = &self.shape {
+                    let ndim = shape.len();
+                    if ndim > 0 {
+                        parts.push(format!("[{}D]", ndim));
+                    }
+                }
+
+                // Data type
+                if let Some(dtype) = &self.dtype {
+                    // Clean up the type name (remove "NcVariableType::" prefix if present)
+                    let clean_type = dtype.replace("NcVariableType::", "").to_lowercase();
+                    parts.push(clean_type);
+                }
+
+                if !parts.is_empty() {
+                    format!(" {}", parts.join(" "))
                 } else {
                     String::new()
                 }

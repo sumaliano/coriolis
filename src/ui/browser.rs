@@ -56,12 +56,20 @@ fn draw_tree(f: &mut Frame<'_>, app: &mut App, area: Rect, colors: &ThemeColors)
         return;
     };
 
+    // Adjust scroll to keep cursor visible (subtract 2 for borders)
+    let viewport_height = area.height.saturating_sub(2) as usize;
+    app.tree_cursor.adjust_scroll(viewport_height);
+
     let visible = app.tree_cursor.visible_items();
     let cursor = app.tree_cursor.cursor();
+    let scroll_offset = app.tree_cursor.scroll_offset();
 
+    // Only show items within the viewport
     let items: Vec<ListItem<'_>> = visible
         .iter()
         .enumerate()
+        .skip(scroll_offset)
+        .take(viewport_height)
         .map(|(idx, item)| {
             let indent = "  ".repeat(item.level);
             let expand_icon = if item.node.is_group() {
@@ -243,6 +251,11 @@ fn draw_welcome(f: &mut Frame<'_>, area: Rect, colors: &ThemeColors) {
 fn format_node_details(node: &DataNode, colors: &ThemeColors) -> Vec<Line<'static>> {
     let mut lines = vec![];
 
+    // Format groups specially
+    if node.is_group() {
+        return format_group_details(node, colors);
+    }
+
     // Header
     lines.push(Line::from(Span::styled(
         node.display_name(),
@@ -283,17 +296,6 @@ fn format_node_details(node: &DataNode, colors: &ThemeColors) -> Vec<Line<'stati
         }
     }
 
-    // Children count for groups
-    if node.is_group() {
-        lines.push(Line::from(vec![
-            Span::styled("Children: ", Style::default().fg(colors.label)),
-            Span::styled(
-                node.children.len().to_string(),
-                Style::default().fg(colors.value),
-            ),
-        ]));
-    }
-
     // Attributes
     if !node.attributes.is_empty() {
         lines.push(Line::from(""));
@@ -312,8 +314,12 @@ fn format_node_details(node: &DataNode, colors: &ThemeColors) -> Vec<Line<'stati
         }
     }
 
-    // Metadata
-    if !node.metadata.is_empty() {
+    // Metadata (excluding dimension metadata)
+    let non_dim_metadata: std::collections::HashMap<_, _> = node.metadata.iter()
+        .filter(|(k, _)| !k.starts_with("dim_"))
+        .collect();
+
+    if !non_dim_metadata.is_empty() {
         lines.push(Line::from(""));
         lines.push(Line::from(Span::styled(
             "Metadata:",
@@ -322,11 +328,144 @@ fn format_node_details(node: &DataNode, colors: &ThemeColors) -> Vec<Line<'stati
                 .add_modifier(Modifier::BOLD),
         )));
 
-        for (key, value) in &node.metadata {
+        for (key, value) in non_dim_metadata {
             lines.push(Line::from(vec![
                 Span::styled(format!("  {}: ", key), Style::default().fg(colors.label)),
                 Span::styled(value.clone(), Style::default().fg(colors.value)),
             ]));
+        }
+    }
+
+    lines
+}
+
+fn format_group_details(node: &DataNode, colors: &ThemeColors) -> Vec<Line<'static>> {
+    let mut lines = vec![];
+
+    // Group header
+    lines.push(Line::from(Span::styled(
+        format!("Group \"{}\"", node.name),
+        Style::default()
+            .fg(colors.heading)
+            .add_modifier(Modifier::BOLD),
+    )));
+    lines.push(Line::from(""));
+
+    // Full path
+    lines.push(Line::from(Span::styled(
+        format!("Group full name: {}", node.path),
+        Style::default().fg(colors.text),
+    )));
+    lines.push(Line::from(""));
+
+    // Dimensions
+    let dims: Vec<_> = node.metadata.iter()
+        .filter(|(k, _)| k.starts_with("dim_"))
+        .collect();
+
+    if !dims.is_empty() {
+        lines.push(Line::from(Span::styled(
+            "dimensions:",
+            Style::default().fg(colors.heading),
+        )));
+
+        for (key, value) in dims {
+            let dim_name = key.strip_prefix("dim_").unwrap_or(key);
+            lines.push(Line::from(Span::styled(
+                format!("  {} = {};", dim_name, value),
+                Style::default().fg(colors.value),
+            )));
+        }
+        lines.push(Line::from(""));
+    }
+
+    // Variables
+    let variables: Vec<_> = node.children.iter()
+        .filter(|child| child.is_variable())
+        .collect();
+
+    if !variables.is_empty() {
+        lines.push(Line::from(Span::styled(
+            "variables:",
+            Style::default().fg(colors.heading),
+        )));
+
+        for var in variables {
+            // Variable signature
+            let mut sig = format!("  {}", var.dtype.as_ref().unwrap_or(&"unknown".to_string()).replace("NcVariableType::", "").to_lowercase());
+            sig.push_str(&format!(" {}", var.name));
+
+            // Dimensions
+            if let Some(dim_str) = var.metadata.get("dims") {
+                if !dim_str.is_empty() {
+                    let dims: Vec<&str> = dim_str.split(", ").collect();
+                    if let Some(shape) = &var.shape {
+                        let mut dim_info = Vec::new();
+                        for (i, dim_name) in dims.iter().enumerate() {
+                            if let Some(&size) = shape.get(i) {
+                                dim_info.push(format!("{}={}", dim_name, size));
+                            }
+                        }
+                        if !dim_info.is_empty() {
+                            sig.push_str(&format!("({})", dim_info.join(", ")));
+                        }
+                    }
+                }
+            }
+            sig.push(';');
+
+            lines.push(Line::from(Span::styled(
+                sig,
+                Style::default().fg(colors.value),
+            )));
+
+            // Variable attributes
+            for (key, value) in &var.attributes {
+                lines.push(Line::from(Span::styled(
+                    format!("    :{} = {};", key, value),
+                    Style::default().fg(colors.label),
+                )));
+            }
+
+            lines.push(Line::from(""));
+        }
+    }
+
+    // Child groups
+    let groups: Vec<_> = node.children.iter()
+        .filter(|child| child.is_group())
+        .collect();
+
+    if !groups.is_empty() {
+        for group in groups {
+            lines.push(Line::from(Span::styled(
+                format!("group: {} {{", group.name),
+                Style::default().fg(colors.heading),
+            )));
+            lines.push(Line::from(Span::styled(
+                format!("  {} child items...", group.children.len()),
+                Style::default().fg(colors.text),
+            )));
+            lines.push(Line::from(Span::styled(
+                "}",
+                Style::default().fg(colors.heading),
+            )));
+            lines.push(Line::from(""));
+        }
+    }
+
+    // Global attributes
+    if !node.attributes.is_empty() {
+        lines.push(Line::from(Span::styled(
+            "attributes:",
+            Style::default().fg(colors.heading),
+        )));
+
+        for (key, value) in &node.attributes {
+            lines.push(Line::from(Span::styled(
+                format!("  :{} = {};", key, value),
+                Style::default().fg(colors.label),
+            )));
         }
     }
 

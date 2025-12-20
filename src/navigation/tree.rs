@@ -25,6 +25,8 @@ pub struct TreeState {
     root: Option<DataNode>,
     /// Set of expanded node paths.
     expanded_paths: std::collections::HashSet<String>,
+    /// Scroll offset for the tree view.
+    scroll_offset: usize,
 }
 
 impl TreeState {
@@ -35,6 +37,7 @@ impl TreeState {
             cursor: 0,
             root: None,
             expanded_paths: std::collections::HashSet::new(),
+            scroll_offset: 0,
         }
     }
 
@@ -85,6 +88,28 @@ impl TreeState {
         if self.cursor + 1 < self.items.len() {
             self.cursor += 1;
         }
+    }
+
+    /// Adjust scroll to keep cursor visible.
+    pub fn adjust_scroll(&mut self, viewport_height: usize) {
+        if viewport_height == 0 {
+            return;
+        }
+
+        // If cursor is above the visible area, scroll up
+        if self.cursor < self.scroll_offset {
+            self.scroll_offset = self.cursor;
+        }
+
+        // If cursor is below the visible area, scroll down
+        if self.cursor >= self.scroll_offset + viewport_height {
+            self.scroll_offset = self.cursor.saturating_sub(viewport_height - 1);
+        }
+    }
+
+    /// Get the current scroll offset.
+    pub fn scroll_offset(&self) -> usize {
+        self.scroll_offset
     }
 
     /// Expand the node at the current cursor position.

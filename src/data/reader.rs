@@ -36,26 +36,12 @@ impl DataReader {
                 .insert(attr.name().to_string(), Self::attr_value_to_string(&attr));
         }
 
-        // Read dimensions at root level
-        let mut dims_node = DataNode::new(
-            "Dimensions".to_string(),
-            "/dimensions".to_string(),
-            NodeType::Group,
-        );
+        // Store dimensions as metadata on the root node
         for dim in file.dimensions() {
             let dim_name = dim.name();
-            let mut dim_node = DataNode::new(
-                format!("{} ({})", dim_name, dim.len()),
-                format!("/dimensions/{}", dim_name),
-                NodeType::Dimension,
-            );
-            dim_node
+            root_node
                 .metadata
-                .insert("length".to_string(), dim.len().to_string());
-            dims_node.add_child(dim_node);
-        }
-        if !dims_node.children.is_empty() {
-            root_node.add_child(dims_node);
+                .insert(format!("dim_{}", dim_name), dim.len().to_string());
         }
 
         // Read variables at root level
@@ -94,26 +80,12 @@ impl DataReader {
                 .insert(attr.name().to_string(), Self::attr_value_to_string(&attr));
         }
 
-        // Read dimensions in this group
-        let mut dims_node = DataNode::new(
-            "Dimensions".to_string(),
-            format!("{}/dimensions", group_path),
-            NodeType::Group,
-        );
+        // Store dimensions as metadata on the group node
         for dim in group.dimensions() {
             let dim_name = dim.name();
-            let mut dim_node = DataNode::new(
-                format!("{} ({})", dim_name, dim.len()),
-                format!("{}/dimensions/{}", group_path, dim_name),
-                NodeType::Dimension,
-            );
-            dim_node
+            group_node
                 .metadata
-                .insert("length".to_string(), dim.len().to_string());
-            dims_node.add_child(dim_node);
-        }
-        if !dims_node.children.is_empty() {
-            group_node.add_child(dims_node);
+                .insert(format!("dim_{}", dim_name), dim.len().to_string());
         }
 
         // Read variables in this group
