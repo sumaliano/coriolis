@@ -69,7 +69,7 @@ impl DataNode {
         let icon = match self.node_type {
             NodeType::Root => "🏠",
             NodeType::Group => "📂",
-            NodeType::Variable => "🌡",
+            NodeType::Variable => "-",
         };
 
         let suffix = match self.node_type {

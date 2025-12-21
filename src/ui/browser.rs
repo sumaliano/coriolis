@@ -82,18 +82,45 @@ fn draw_tree(f: &mut Frame<'_>, app: &mut App, area: Rect, colors: &ThemeColors)
                 "  "
             };
 
-            let text = format!("{}{}{}", indent, expand_icon, item.node.display_name());
+            let line = if idx == cursor {
+                // Cursor highlighting - entire line
+                let text = format!("{}{}{}", indent, expand_icon, item.node.display_name());
+                Line::from(text).style(
+                    Style::default()
+                        .fg(colors.bg0)
+                        .bg(colors.yellow)
+                        .add_modifier(Modifier::BOLD),
+                )
+            } else if item.node.is_variable() {
+                // For variables: name is bold/green, metadata is grayed out
+                let display_str = item.node.display_name();
 
-            let style = if idx == cursor {
-                Style::default()
-                    .fg(colors.bg0)
-                    .bg(colors.yellow)
-                    .add_modifier(Modifier::BOLD)
+                // Split at first space or opening parenthesis to separate name from metadata
+                let (name_part, meta_part) = if let Some(pos) = display_str.find(|c| c == '(' || c == ' ') {
+                    let (n, m) = display_str.split_at(pos);
+                    (n.to_string(), m.to_string())
+                } else {
+                    (display_str.clone(), String::new())
+                };
+
+                let mut spans = vec![
+                    Span::raw(indent),
+                    Span::raw(expand_icon),
+                    Span::styled(name_part, Style::default().fg(colors.green).add_modifier(Modifier::BOLD)),
+                ];
+
+                if !meta_part.is_empty() {
+                    spans.push(Span::styled(meta_part, Style::default().fg(colors.gray)));
+                }
+
+                Line::from(spans)
             } else {
-                Style::default().fg(colors.fg0)
+                // Groups and root - normal styling
+                let text = format!("{}{}{}", indent, expand_icon, item.node.display_name());
+                Line::from(text).style(Style::default().fg(colors.fg0))
             };
 
-            ListItem::new(Line::from(text)).style(style)
+            ListItem::new(line)
         })
         .collect();
 

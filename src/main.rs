@@ -163,6 +163,22 @@ fn run_app<B: ratatui::backend::Backend>(terminal: &mut Terminal<B>, mut app: Ap
                         | (KeyModifiers::NONE, KeyCode::Char('_')) => {
                             app.overlay.decrement_active_slice();
                         }
+                        // Change which dimensions are displayed
+                        (KeyModifiers::NONE, KeyCode::Char('r'))
+                        | (KeyModifiers::NONE, KeyCode::Char('R')) => {
+                            app.overlay.rotate_display_dims();
+                            app.status = "Rotated display dimensions".to_string();
+                        }
+                        (KeyModifiers::NONE, KeyCode::Char('y'))
+                        | (KeyModifiers::NONE, KeyCode::Char('Y')) => {
+                            app.overlay.cycle_display_dim(0);
+                            app.status = "Cycled Y dimension".to_string();
+                        }
+                        (KeyModifiers::NONE, KeyCode::Char('x'))
+                        | (KeyModifiers::NONE, KeyCode::Char('X')) => {
+                            app.overlay.cycle_display_dim(1);
+                            app.status = "Cycled X dimension".to_string();
+                        }
                         _ => {}
                     }
                     continue;

@@ -3,13 +3,12 @@
 use super::ThemeColors;
 use crate::data::LoadedVariable;
 use ratatui::{
-    buffer::Buffer,
     layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
     widgets::{
         Axis, Block, Borders, Cell, Chart, Clear, Dataset, GraphType, Paragraph, Row, Scrollbar,
-        ScrollbarOrientation, ScrollbarState, Table, Widget, Wrap,
+        ScrollbarOrientation, ScrollbarState, Table, Wrap,
     },
     Frame,
 };
@@ -263,6 +262,16 @@ impl OverlayState {
         } else {
             (0, 0)
         };
+
+        // For 3D+ data, automatically select the first non-display dimension
+        self.active_dim_selector = if ndim > 2 {
+            // Find first dimension that's not being displayed
+            (0..ndim)
+                .find(|&i| i != self.display_dims.0 && i != self.display_dims.1)
+        } else {
+            None
+        };
+
         self.variable = Some(var);
         self.table_scroll = (0, 0);
         self.error = None;
@@ -406,6 +415,67 @@ impl OverlayState {
             self.prev_slice(dim);
         }
     }
+
+    /// Rotate display dimensions forward (swap Y and X axes).
+    pub fn rotate_display_dims(&mut self) {
+        if let Some(ref var) = self.variable {
+            let ndim = var.ndim();
+            if ndim >= 2 {
+                // Swap the two display dimensions
+                let temp = self.display_dims.0;
+                self.display_dims.0 = self.display_dims.1;
+                self.display_dims.1 = temp;
+            }
+        }
+    }
+
+    /// Cycle through available dimensions for display.
+    pub fn cycle_display_dim(&mut self, which: usize) {
+        if let Some(ref var) = self.variable {
+            let ndim = var.ndim();
+            if ndim < 2 {
+                return;
+            }
+
+            // Get current dimension
+            let current = if which == 0 {
+                self.display_dims.0
+            } else {
+                self.display_dims.1
+            };
+
+            // Find next available dimension (wrap around)
+            let mut next = (current + 1) % ndim;
+
+            // Skip if it would duplicate the other display dimension
+            let other = if which == 0 {
+                self.display_dims.1
+            } else {
+                self.display_dims.0
+            };
+
+            // If next equals other, skip to the one after
+            if next == other {
+                next = (next + 1) % ndim;
+            }
+
+            // Update display dimension
+            if which == 0 {
+                self.display_dims.0 = next;
+            } else {
+                self.display_dims.1 = next;
+            }
+
+            // Update active selector if it's now a display dimension
+            if let Some(active) = self.active_dim_selector {
+                if active == next {
+                    // Find a new active dimension
+                    self.active_dim_selector = (0..ndim)
+                        .find(|&i| i != self.display_dims.0 && i != self.display_dims.1);
+                }
+            }
+        }
+    }
 }
 
 /// Draw the data overlay.
@@ -527,36 +597,46 @@ fn draw_table_view(
     var: &LoadedVariable,
     colors: &ThemeColors,
 ) {
-    let data = var.data.to_f64();
-
     // Determine visible area
-    let visible_rows = (area.height as usize).saturating_sub(2);
+    let visible_rows = (area.height as usize).saturating_sub(4); // Account for border and header
     let col_width = 12;
-    let visible_cols = (area.width as usize / col_width).max(1);
+    let visible_cols = ((area.width as usize).saturating_sub(6) / col_width).max(1).min(20); // Limit to 20 cols
 
     let (start_row, start_col) = state.table_scroll;
     let total_rows = state.get_view_rows(var);
     let total_cols = state.get_view_cols(var);
 
-    // Build table rows
+    // Get data slice efficiently - avoid repeated get_value calls
+    let data_slice = if var.ndim() == 0 {
+        vec![vec![var.data.to_f64().first().copied().unwrap_or(f64::NAN)]]
+    } else if var.ndim() == 1 {
+        let data = var.data.to_f64();
+        vec![data]
+    } else {
+        // Get 2D slice once - much faster than repeated get_value calls
+        var.get_2d_slice(state.display_dims.0, state.display_dims.1, &state.slice_indices)
+    };
+
+    // Build table rows from the slice
     let mut rows = Vec::new();
 
-    for row_idx in start_row..((start_row + visible_rows).min(total_rows)) {
+    let end_row = (start_row + visible_rows).min(total_rows);
+    let end_col = (start_col + visible_cols).min(total_cols);
+
+    for row_idx in start_row..end_row {
         let mut cells = Vec::new();
         // Row header
         cells.push(Cell::from(format!("{:>4}", row_idx)).style(Style::default().fg(colors.green)));
 
-        for col_idx in start_col..((start_col + visible_cols).min(total_cols)) {
-            let value = if var.ndim() == 0 {
-                data.first().copied().unwrap_or(f64::NAN)
-            } else if var.ndim() == 1 {
-                data.get(row_idx).copied().unwrap_or(f64::NAN)
+        for col_idx in start_col..end_col {
+            let value = if var.ndim() <= 1 {
+                data_slice[0].get(row_idx).copied().unwrap_or(f64::NAN)
             } else {
-                // Build indices
-                let mut indices = state.slice_indices.clone();
-                indices[state.display_dims.0] = row_idx;
-                indices[state.display_dims.1] = col_idx;
-                var.get_value(&indices).unwrap_or(f64::NAN)
+                data_slice
+                    .get(row_idx)
+                    .and_then(|row| row.get(col_idx))
+                    .copied()
+                    .unwrap_or(f64::NAN)
             };
 
             let formatted = format_value(value);
@@ -722,202 +802,6 @@ fn draw_plot1d_view(
     f.render_widget(chart, area);
 }
 
-/// Custom heatmap widget for high-performance rendering.
-struct HeatmapWidget<'a> {
-    data: &'a [Vec<f64>],
-    min_val: f64,
-    max_val: f64,
-    palette: ColorPalette,
-    title: String,
-    x_label: String,
-    y_label: String,
-    border_color: Color,
-    title_color: Color,
-    label_color: Color,
-    invalid_color: Color,
-}
-
-impl<'a> HeatmapWidget<'a> {
-    fn new(
-        data: &'a [Vec<f64>],
-        min_val: f64,
-        max_val: f64,
-        palette: ColorPalette,
-    ) -> Self {
-        Self {
-            data,
-            min_val,
-            max_val,
-            palette,
-            title: String::new(),
-            x_label: String::new(),
-            y_label: String::new(),
-            border_color: Color::Gray,
-            title_color: Color::Yellow,
-            label_color: Color::Green,
-            invalid_color: Color::Gray,
-        }
-    }
-
-    fn title(mut self, title: String) -> Self {
-        self.title = title;
-        self
-    }
-
-    fn labels(mut self, x_label: String, y_label: String) -> Self {
-        self.x_label = x_label;
-        self.y_label = y_label;
-        self
-    }
-
-    fn colors(mut self, border: Color, title: Color, label: Color, invalid: Color) -> Self {
-        self.border_color = border;
-        self.title_color = title;
-        self.label_color = label;
-        self.invalid_color = invalid;
-        self
-    }
-}
-
-impl<'a> Widget for HeatmapWidget<'a> {
-    fn render(self, area: Rect, buf: &mut Buffer) {
-        // Draw border and title
-        let block = Block::default()
-            .borders(Borders::ALL)
-            .border_style(Style::default().fg(self.border_color))
-            .title(format!(" {} ", self.title))
-            .title_style(Style::default().fg(self.title_color));
-
-        let inner = block.inner(area);
-        block.render(area, buf);
-
-        if inner.width < 4 || inner.height < 4 {
-            return;
-        }
-
-        let rows = self.data.len();
-        let cols = if rows > 0 { self.data[0].len() } else { 0 };
-
-        if rows == 0 || cols == 0 {
-            return;
-        }
-
-        let range = if (self.max_val - self.min_val).abs() < 1e-10 {
-            1.0
-        } else {
-            self.max_val - self.min_val
-        };
-
-        // Reserve space for colorbar (2 lines) and labels (1 line)
-        let heatmap_height = (inner.height.saturating_sub(3)) as usize;
-        let heatmap_width = inner.width as usize;
-
-        // Render colorbar
-        let colorbar_y = inner.y;
-        let colorbar_width = 40.min(heatmap_width.saturating_sub(30));
-        let colorbar_start_x = inner.x + 1;
-
-        for i in 0..colorbar_width {
-            let t = i as f64 / colorbar_width as f64;
-            let color = self.palette.color(t);
-            let x = colorbar_start_x + i as u16;
-            if x < inner.x + inner.width {
-                buf.cell_mut((x, colorbar_y))
-                    .unwrap()
-                    .set_char('█')
-                    .set_fg(color);
-            }
-        }
-
-        // Render min/max labels
-        let min_label = format!("{:.2e}", self.min_val);
-        let max_label = format!("{:.2e}", self.max_val);
-        let palette_label = format!("[{}]", self.palette.name());
-
-        for (i, ch) in min_label.chars().enumerate() {
-            let x = colorbar_start_x + colorbar_width as u16 + 1 + i as u16;
-            if x < inner.x + inner.width {
-                if let Some(cell) = buf.cell_mut((x, colorbar_y)) {
-                    cell.set_char(ch).set_fg(self.label_color);
-                }
-            }
-        }
-
-        for (i, ch) in max_label.chars().enumerate() {
-            let x = colorbar_start_x + colorbar_width as u16 + min_label.len() as u16 + 3 + i as u16;
-            if x < inner.x + inner.width {
-                if let Some(cell) = buf.cell_mut((x, colorbar_y)) {
-                    cell.set_char(ch).set_fg(self.label_color);
-                }
-            }
-        }
-
-        for (i, ch) in palette_label.chars().enumerate() {
-            let x = colorbar_start_x + colorbar_width as u16 + min_label.len() as u16 + max_label.len() as u16 + 5 + i as u16;
-            if x < inner.x + inner.width {
-                if let Some(cell) = buf.cell_mut((x, colorbar_y)) {
-                    cell.set_char(ch).set_fg(self.label_color);
-                }
-            }
-        }
-
-        // Render heatmap - direct buffer writing for maximum performance
-        let row_step = (rows as f64 / heatmap_height as f64).max(1.0);
-        let col_step = (cols as f64 / heatmap_width as f64).max(1.0);
-
-        let heatmap_start_y = inner.y + 2;
-
-        for y in 0..heatmap_height {
-            let row_idx = ((y as f64) * row_step) as usize;
-            if row_idx >= rows {
-                break;
-            }
-
-            let screen_y = heatmap_start_y + y as u16;
-            if screen_y >= inner.y + inner.height - 1 {
-                break;
-            }
-
-            for x in 0..heatmap_width {
-                let col_idx = ((x as f64) * col_step) as usize;
-                if col_idx >= cols {
-                    break;
-                }
-
-                let screen_x = inner.x + x as u16;
-                if screen_x >= inner.x + inner.width {
-                    break;
-                }
-
-                let val = self.data[row_idx][col_idx];
-                if val.is_finite() {
-                    let normalized = ((val - self.min_val) / range).clamp(0.0, 1.0);
-                    let color = self.palette.color(normalized);
-                    if let Some(cell) = buf.cell_mut((screen_x, screen_y)) {
-                        cell.set_char('█').set_fg(color);
-                    }
-                } else {
-                    if let Some(cell) = buf.cell_mut((screen_x, screen_y)) {
-                        cell.set_char('?').set_fg(self.invalid_color);
-                    }
-                }
-            }
-        }
-
-        // Render axis labels at bottom
-        let label_y = inner.y + inner.height - 1;
-        let label_text = format!("Y: {} | X: {}", self.y_label, self.x_label);
-        for (i, ch) in label_text.chars().enumerate() {
-            let x = inner.x + i as u16;
-            if x < inner.x + inner.width {
-                if let Some(cell) = buf.cell_mut((x, label_y)) {
-                    cell.set_char(ch).set_fg(self.label_color);
-                }
-            }
-        }
-    }
-}
-
 fn draw_heatmap_view(
     f: &mut Frame<'_>,
     area: Rect,
@@ -957,6 +841,15 @@ fn draw_heatmap_view(
             (min.min(v), max.max(v))
         });
 
+    let range = if (max_val - min_val).abs() < 1e-10 {
+        1.0
+    } else {
+        max_val - min_val
+    };
+
+    let rows = data_2d.len();
+    let cols = data_2d[0].len();
+
     let dim1_name = var
         .dim_names
         .get(state.display_dims.0)
@@ -968,12 +861,108 @@ fn draw_heatmap_view(
         .map(|s| s.as_str())
         .unwrap_or("dim1");
 
-    let heatmap = HeatmapWidget::new(&data_2d, min_val, max_val, state.color_palette)
-        .title(var.name.clone())
-        .labels(dim2_name.to_string(), dim1_name.to_string())
-        .colors(colors.bg2, colors.yellow, colors.green, colors.gray);
+    // Render with direct buffer writes for dense heatmap
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(colors.bg2))
+        .title(format!(" {} | Y: {} | X: {} | {} ", var.name, dim1_name, dim2_name, state.color_palette.name()))
+        .title_style(Style::default().fg(colors.yellow));
 
-    f.render_widget(heatmap, area);
+    let inner = block.inner(area);
+    f.render_widget(block, area);
+
+    if inner.width < 4 || inner.height < 4 {
+        return;
+    }
+
+    // Reserve space for colorbar
+    let colorbar_height = 1;
+    let heatmap_area = Rect {
+        x: inner.x,
+        y: inner.y + colorbar_height,
+        width: inner.width,
+        height: inner.height.saturating_sub(colorbar_height),
+    };
+
+    // Render colorbar at top
+    let colorbar_width = 50.min(inner.width as usize);
+    let colorbar_start = inner.x + ((inner.width as usize - colorbar_width) / 2) as u16;
+
+    for i in 0..colorbar_width {
+        let t = i as f64 / colorbar_width as f64;
+        let color = state.color_palette.color(t);
+        let x = colorbar_start + i as u16;
+        if x < inner.x + inner.width {
+            if let Some(cell) = f.buffer_mut().cell_mut((x, inner.y)) {
+                cell.set_char('█').set_fg(color);
+            }
+        }
+    }
+
+    // Render min/max labels
+    let min_label = format!("{:.2e}", min_val);
+    let max_label = format!("{:.2e}", max_val);
+
+    for (i, ch) in min_label.chars().enumerate() {
+        let x = inner.x + i as u16;
+        if x < inner.x + inner.width {
+            if let Some(cell) = f.buffer_mut().cell_mut((x, inner.y)) {
+                cell.set_char(ch).set_fg(colors.green);
+            }
+        }
+    }
+
+    let max_x_start = inner.x + inner.width - max_label.len() as u16;
+    for (i, ch) in max_label.chars().enumerate() {
+        let x = max_x_start + i as u16;
+        if x < inner.x + inner.width {
+            if let Some(cell) = f.buffer_mut().cell_mut((x, inner.y)) {
+                cell.set_char(ch).set_fg(colors.green);
+            }
+        }
+    }
+
+    // Render dense heatmap - each terminal cell is a pixel
+    let heatmap_height = heatmap_area.height as usize;
+    let heatmap_width = heatmap_area.width as usize;
+
+    // Sample the data to fit the display area
+    let row_step = (rows as f64 / heatmap_height as f64).max(1.0);
+    let col_step = (cols as f64 / heatmap_width as f64).max(1.0);
+
+    for y in 0..heatmap_height {
+        let row_idx = ((y as f64) * row_step) as usize;
+        if row_idx >= rows {
+            break;
+        }
+
+        for x in 0..heatmap_width {
+            let col_idx = ((x as f64) * col_step) as usize;
+            if col_idx >= cols {
+                break;
+            }
+
+            let screen_x = heatmap_area.x + x as u16;
+            let screen_y = heatmap_area.y + y as u16;
+
+            if screen_x >= heatmap_area.x + heatmap_area.width || screen_y >= heatmap_area.y + heatmap_area.height {
+                break;
+            }
+
+            let val = data_2d[row_idx][col_idx];
+            if val.is_finite() {
+                let normalized = ((val - min_val) / range).clamp(0.0, 1.0);
+                let color = state.color_palette.color(normalized);
+                if let Some(cell) = f.buffer_mut().cell_mut((screen_x, screen_y)) {
+                    cell.set_char('█').set_fg(color);
+                }
+            } else {
+                if let Some(cell) = f.buffer_mut().cell_mut((screen_x, screen_y)) {
+                    cell.set_char('?').set_fg(colors.gray);
+                }
+            }
+        }
+    }
 }
 
 fn draw_dimension_selectors(
@@ -1059,7 +1048,7 @@ fn draw_dimension_selectors(
 }
 
 fn draw_footer(f: &mut Frame<'_>, area: Rect, colors: &ThemeColors) {
-    let help = "Tab: View | C: Palette | Arrows: Pan | Shift+Tab: Dim | PgUp/PgDn: Slice | Esc: Close";
+    let help = "Tab: View | C: Palette | R: Rotate | Y/X: Change Dims | Shift+Tab: Slice Dim | PgUp/PgDn: Slice | Esc: Close";
     let paragraph = Paragraph::new(help)
         .style(Style::default().fg(colors.green))
         .alignment(Alignment::Center);
