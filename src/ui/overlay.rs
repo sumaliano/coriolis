@@ -696,12 +696,9 @@ fn draw_plot1d_view(
     var: &LoadedVariable,
     colors: &ThemeColors,
 ) {
-    // Get 1D slice of data
-    let slice_dim = if var.ndim() > 1 {
-        state.display_dims.1
-    } else {
-        0
-    };
+    // For 1D plot, always use the last dimension regardless of display_dims
+    // This makes sense: X = index, Y = value
+    let slice_dim = var.ndim().saturating_sub(1);
 
     let data = if var.ndim() <= 1 {
         var.data.to_f64()
@@ -725,8 +722,8 @@ fn draw_plot1d_view(
             (min.min(v), max.max(v))
         });
 
-    // Add small padding to avoid edge clipping
-    let padding = (max_val - min_val).abs() * 0.05;
+    // Add padding to avoid edge clipping - 10% margin
+    let padding = (max_val - min_val).abs() * 0.3;
     let y_min = min_val - padding;
     let y_max = max_val + padding;
 
@@ -748,38 +745,54 @@ fn draw_plot1d_view(
 
     let x_max = (data.len() - 1) as f64;
 
-    // Get dimension name
+    // Get dimension name for the slice being displayed
     let dim_name = var
         .dim_names
         .get(slice_dim)
         .map(|s| s.as_str())
         .unwrap_or("index");
 
-    // Create dataset
+    // Build slice info for title (what slices are active)
+    let mut slice_info = String::new();
+    if var.ndim() > 1 {
+        let slice_parts: Vec<String> = (0..var.ndim())
+            .filter(|&i| i != slice_dim)
+            .map(|i| {
+                let dim_name = var.dim_names.get(i).map(|s| s.as_str()).unwrap_or("?");
+                let idx = state.slice_indices.get(i).copied().unwrap_or(0);
+                format!("{}={}", dim_name, idx)
+            })
+            .collect();
+        if !slice_parts.is_empty() {
+            slice_info = format!(" [{}]", slice_parts.join(", "));
+        }
+    }
+
+    // Create dataset with thicker line
     let datasets = vec![Dataset::default()
         .name(var.name.as_str())
         .marker(ratatui::symbols::Marker::Braille)
         .graph_type(GraphType::Line)
-        .style(Style::default().fg(state.color_palette.color(0.5)))
+        .style(Style::default().fg(state.color_palette.color(0.6)))
         .data(&chart_data)];
 
     // Create axes with better formatting
     let x_labels = vec![
         "0".to_string(),
-        format!("{}", x_max / 2.0),
-        format!("{}", x_max),
+        format!("{:.0}", x_max / 2.0),
+        format!("{:.0}", x_max),
     ];
 
     let x_axis = Axis::default()
-        .title(dim_name)
+        .title(format!("Index ({})", dim_name))
         .style(Style::default().fg(colors.fg0))
         .bounds([0.0, x_max])
         .labels(x_labels);
 
     let y_labels = vec![
-        format!("{:.2e}", y_min),
-        format!("{:.2e}", (y_min + y_max) / 2.0),
-        format!("{:.2e}", y_max),
+        format!("{:.3e}", y_min),
+        format!("{:.3e}", (y_min + y_max) / 2.0),
+        format!("{:.3e}", y_max),
     ];
 
     let y_axis = Axis::default()
@@ -793,7 +806,7 @@ fn draw_plot1d_view(
             Block::default()
                 .borders(Borders::ALL)
                 .border_style(Style::default().fg(colors.bg2))
-                .title(format!(" {} ", var.name))
+                .title(format!(" {}{} ", var.name, slice_info))
                 .title_style(Style::default().fg(colors.yellow)),
         )
         .x_axis(x_axis)
@@ -922,13 +935,19 @@ fn draw_heatmap_view(
         }
     }
 
-    // Render dense heatmap - each terminal cell is a pixel
+    // Render dense heatmap - adjust for terminal character aspect ratio
+    // Terminal chars are ~2:1 (height:width), so use 2 chars per pixel horizontally
     let heatmap_height = heatmap_area.height as usize;
     let heatmap_width = heatmap_area.width as usize;
 
-    // Sample the data to fit the display area
+    // Calculate aspect-corrected dimensions
+    // Each pixel is 2 terminal chars wide to approximate square aspect ratio
+    let pixel_width = 2;
+    let display_cols = heatmap_width / pixel_width;
+
+    // Sample the data to fit the display area with square-ish pixels
     let row_step = (rows as f64 / heatmap_height as f64).max(1.0);
-    let col_step = (cols as f64 / heatmap_width as f64).max(1.0);
+    let col_step = (cols as f64 / display_cols as f64).max(1.0);
 
     for y in 0..heatmap_height {
         let row_idx = ((y as f64) * row_step) as usize;
@@ -936,29 +955,38 @@ fn draw_heatmap_view(
             break;
         }
 
-        for x in 0..heatmap_width {
-            let col_idx = ((x as f64) * col_step) as usize;
+        for px in 0..display_cols {
+            let col_idx = ((px as f64) * col_step) as usize;
             if col_idx >= cols {
                 break;
             }
 
-            let screen_x = heatmap_area.x + x as u16;
-            let screen_y = heatmap_area.y + y as u16;
-
-            if screen_x >= heatmap_area.x + heatmap_area.width || screen_y >= heatmap_area.y + heatmap_area.height {
-                break;
-            }
-
             let val = data_2d[row_idx][col_idx];
-            if val.is_finite() {
+            let color = if val.is_finite() {
                 let normalized = ((val - min_val) / range).clamp(0.0, 1.0);
-                let color = state.color_palette.color(normalized);
-                if let Some(cell) = f.buffer_mut().cell_mut((screen_x, screen_y)) {
-                    cell.set_char('█').set_fg(color);
-                }
+                state.color_palette.color(normalized)
             } else {
+                colors.gray
+            };
+
+            // Draw pixel_width characters for each pixel (to make it square-ish)
+            for i in 0..pixel_width {
+                let screen_x = heatmap_area.x + (px * pixel_width + i) as u16;
+                let screen_y = heatmap_area.y + y as u16;
+
+                if screen_x >= heatmap_area.x + heatmap_area.width {
+                    break;
+                }
+                if screen_y >= heatmap_area.y + heatmap_area.height {
+                    break;
+                }
+
                 if let Some(cell) = f.buffer_mut().cell_mut((screen_x, screen_y)) {
-                    cell.set_char('?').set_fg(colors.gray);
+                    if val.is_finite() {
+                        cell.set_char('█').set_fg(color);
+                    } else {
+                        cell.set_char('?').set_fg(color);
+                    }
                 }
             }
         }

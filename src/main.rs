@@ -144,8 +144,11 @@ fn run_app<B: ratatui::backend::Backend>(terminal: &mut Terminal<B>, mut app: Ap
                             app.overlay.scroll_down(10);
                         }
                         // Dimension selector navigation (Tab through dimensions for 3D+ data)
-                        (KeyModifiers::SHIFT, KeyCode::Tab) => {
+                        | (KeyModifiers::NONE, KeyCode::Char('s')) => {
                             app.overlay.next_dim_selector();
+                            if let Some(dim) = app.overlay.active_dim_selector {
+                                app.status = format!("Selected dimension {} for slicing", dim);
+                            }
                         }
                         // Slice navigation with PageUp/PageDown
                         (KeyModifiers::NONE, KeyCode::PageUp) => {
@@ -155,11 +158,13 @@ fn run_app<B: ratatui::backend::Backend>(terminal: &mut Terminal<B>, mut app: Ap
                             app.overlay.decrement_active_slice();
                         }
                         // Also keep +/- for slice navigation
-                        (KeyModifiers::NONE, KeyCode::Char('+'))
+                        (KeyModifiers::NONE, KeyCode::Char(']'))
+                        | (KeyModifiers::NONE, KeyCode::Char('+'))
                         | (KeyModifiers::NONE, KeyCode::Char('=')) => {
                             app.overlay.increment_active_slice();
                         }
-                        (KeyModifiers::NONE, KeyCode::Char('-'))
+                        (KeyModifiers::NONE, KeyCode::Char('['))
+                        | (KeyModifiers::NONE, KeyCode::Char('-'))
                         | (KeyModifiers::NONE, KeyCode::Char('_')) => {
                             app.overlay.decrement_active_slice();
                         }
