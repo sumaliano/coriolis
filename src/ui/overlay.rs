@@ -3,15 +3,167 @@
 use super::ThemeColors;
 use crate::data::LoadedVariable;
 use ratatui::{
+    buffer::Buffer,
     layout::{Alignment, Constraint, Direction, Layout, Rect},
-    style::{Modifier, Style},
+    style::{Color, Modifier, Style},
     text::{Line, Span},
     widgets::{
-        Block, Borders, Cell, Clear, Paragraph, Row, Scrollbar, ScrollbarOrientation,
-        ScrollbarState, Table, Wrap,
+        Axis, Block, Borders, Cell, Chart, Clear, Dataset, GraphType, Paragraph, Row, Scrollbar,
+        ScrollbarOrientation, ScrollbarState, Table, Widget, Wrap,
     },
     Frame,
 };
+
+/// Color palette for heatmap visualization.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ColorPalette {
+    /// Viridis colormap (perceptually uniform, colorblind-friendly).
+    Viridis,
+    /// Plasma colormap (perceptually uniform).
+    Plasma,
+    /// Rainbow/Spectral colormap (traditional, high contrast).
+    Rainbow,
+    /// Blue-White-Red diverging colormap.
+    BlueRed,
+}
+
+impl Default for ColorPalette {
+    fn default() -> Self {
+        Self::Viridis
+    }
+}
+
+impl ColorPalette {
+    /// Get the next palette in cycle.
+    pub fn next(self) -> Self {
+        match self {
+            Self::Viridis => Self::Plasma,
+            Self::Plasma => Self::Rainbow,
+            Self::Rainbow => Self::BlueRed,
+            Self::BlueRed => Self::Viridis,
+        }
+    }
+
+    /// Get palette name.
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::Viridis => "Viridis",
+            Self::Plasma => "Plasma",
+            Self::Rainbow => "Rainbow",
+            Self::BlueRed => "Blue-Red",
+        }
+    }
+
+    /// Map a normalized value (0.0 to 1.0) to an RGB color.
+    pub fn color(self, t: f64) -> Color {
+        let t = t.clamp(0.0, 1.0);
+
+        match self {
+            Self::Viridis => viridis_color(t),
+            Self::Plasma => plasma_color(t),
+            Self::Rainbow => rainbow_color(t),
+            Self::BlueRed => bluered_color(t),
+        }
+    }
+}
+
+/// Viridis colormap approximation.
+fn viridis_color(t: f64) -> Color {
+    // Simplified viridis palette using piecewise linear interpolation
+    let r = if t < 0.5 {
+        68.0 + t * 2.0 * (33.0 - 68.0)
+    } else {
+        33.0 + (t - 0.5) * 2.0 * (253.0 - 33.0)
+    };
+
+    let g = if t < 0.5 {
+        1.0 + t * 2.0 * (104.0 - 1.0)
+    } else {
+        104.0 + (t - 0.5) * 2.0 * (231.0 - 104.0)
+    };
+
+    let b = if t < 0.5 {
+        84.0 + t * 2.0 * (109.0 - 84.0)
+    } else {
+        109.0 + (t - 0.5) * 2.0 * (37.0 - 109.0)
+    };
+
+    Color::Rgb(r as u8, g as u8, b as u8)
+}
+
+/// Plasma colormap approximation.
+fn plasma_color(t: f64) -> Color {
+    let r = if t < 0.5 {
+        13.0 + t * 2.0 * (180.0 - 13.0)
+    } else {
+        180.0 + (t - 0.5) * 2.0 * (240.0 - 180.0)
+    };
+
+    let g = if t < 0.5 {
+        8.0 + t * 2.0 * (54.0 - 8.0)
+    } else {
+        54.0 + (t - 0.5) * 2.0 * (175.0 - 54.0)
+    };
+
+    let b = if t < 0.5 {
+        135.0 + t * 2.0 * (121.0 - 135.0)
+    } else {
+        121.0 + (t - 0.5) * 2.0 * (12.0 - 121.0)
+    };
+
+    Color::Rgb(r as u8, g as u8, b as u8)
+}
+
+/// Rainbow/Spectral colormap.
+fn rainbow_color(t: f64) -> Color {
+    // HSV to RGB conversion with H varying from 240° (blue) to 0° (red)
+    let h = (1.0 - t) * 240.0;
+    let s = 1.0;
+    let v = 1.0;
+
+    let c = v * s;
+    let x = c * (1.0 - ((h / 60.0) % 2.0 - 1.0).abs());
+    let m = v - c;
+
+    let (r, g, b) = if h < 60.0 {
+        (c, x, 0.0)
+    } else if h < 120.0 {
+        (x, c, 0.0)
+    } else if h < 180.0 {
+        (0.0, c, x)
+    } else if h < 240.0 {
+        (0.0, x, c)
+    } else if h < 300.0 {
+        (x, 0.0, c)
+    } else {
+        (c, 0.0, x)
+    };
+
+    Color::Rgb(
+        ((r + m) * 255.0) as u8,
+        ((g + m) * 255.0) as u8,
+        ((b + m) * 255.0) as u8,
+    )
+}
+
+/// Blue-White-Red diverging colormap.
+fn bluered_color(t: f64) -> Color {
+    if t < 0.5 {
+        // Blue to white
+        let t2 = t * 2.0;
+        let r = (t2 * 255.0) as u8;
+        let g = (t2 * 255.0) as u8;
+        let b = 255;
+        Color::Rgb(r, g, b)
+    } else {
+        // White to red
+        let t2 = (t - 0.5) * 2.0;
+        let r = 255;
+        let g = ((1.0 - t2) * 255.0) as u8;
+        let b = ((1.0 - t2) * 255.0) as u8;
+        Color::Rgb(r, g, b)
+    }
+}
 
 /// View mode for the data overlay.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -62,6 +214,8 @@ pub struct OverlayState {
     pub variable: Option<LoadedVariable>,
     /// Current view mode.
     pub view_mode: ViewMode,
+    /// Color palette for heatmap.
+    pub color_palette: ColorPalette,
     /// Scroll offset for table view (row, col).
     pub table_scroll: (usize, usize),
     /// Selected dimension indices for slicing (for 3D+ data).
@@ -88,6 +242,7 @@ impl OverlayState {
         Self {
             variable: None,
             view_mode: ViewMode::Table,
+            color_palette: ColorPalette::default(),
             table_scroll: (0, 0),
             slice_indices: Vec::new(),
             display_dims: (0, 1),
@@ -131,6 +286,11 @@ impl OverlayState {
     /// Toggle view mode.
     pub fn cycle_view_mode(&mut self) {
         self.view_mode = self.view_mode.next();
+    }
+
+    /// Cycle to next color palette.
+    pub fn cycle_color_palette(&mut self) {
+        self.color_palette = self.color_palette.next();
     }
 
     /// Scroll table up.
@@ -281,7 +441,7 @@ pub fn draw_overlay(f: &mut Frame<'_>, state: &OverlayState, colors: &ThemeColor
             vec![
                 Constraint::Length(4), // Header (2 lines + border)
                 Constraint::Min(5),    // Content
-                Constraint::Length(3), // Dimension selectors
+                Constraint::Length(4), // Dimension selectors (2 lines + border)
                 Constraint::Length(2), // Footer
             ]
         } else {
@@ -423,7 +583,13 @@ fn draw_table_view(
 
     let table = Table::new(rows, widths)
         .header(Row::new(header_cells).style(Style::default().add_modifier(Modifier::BOLD)))
-        .block(Block::default())
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(colors.bg2))
+                .title(format!(" {} (Table) ", var.name))
+                .title_style(Style::default().fg(colors.yellow)),
+        )
         .style(Style::default().fg(colors.fg0));
 
     f.render_widget(table, area);
@@ -479,65 +645,277 @@ fn draw_plot1d_view(
             (min.min(v), max.max(v))
         });
 
-    let range = if (max_val - min_val).abs() < 1e-10 {
-        1.0
-    } else {
-        max_val - min_val
-    };
+    // Add small padding to avoid edge clipping
+    let padding = (max_val - min_val).abs() * 0.05;
+    let y_min = min_val - padding;
+    let y_max = max_val + padding;
 
-    // Build ASCII plot
-    let plot_height = area.height.saturating_sub(2) as usize;
-    let plot_width = area.width.saturating_sub(2) as usize;
+    // Prepare data points for Chart widget
+    let chart_data: Vec<(f64, f64)> = data
+        .iter()
+        .enumerate()
+        .filter(|(_, &v)| v.is_finite())
+        .map(|(i, &v)| (i as f64, v))
+        .collect();
 
-    if plot_height == 0 || plot_width == 0 {
+    if chart_data.is_empty() {
+        let para = Paragraph::new("No valid data to display")
+            .style(Style::default().fg(colors.fg0))
+            .alignment(Alignment::Center);
+        f.render_widget(para, area);
         return;
     }
 
-    // Sample data to fit width
-    let step = (data.len() as f64 / plot_width as f64).max(1.0);
+    let x_max = (data.len() - 1) as f64;
 
-    let mut lines = Vec::new();
+    // Get dimension name
+    let dim_name = var
+        .dim_names
+        .get(slice_dim)
+        .map(|s| s.as_str())
+        .unwrap_or("index");
 
-    // Y-axis label
-    lines.push(Line::from(format!("{:.2e}", max_val)));
+    // Create dataset
+    let datasets = vec![Dataset::default()
+        .name(var.name.as_str())
+        .marker(ratatui::symbols::Marker::Braille)
+        .graph_type(GraphType::Line)
+        .style(Style::default().fg(state.color_palette.color(0.5)))
+        .data(&chart_data)];
 
-    // Plot area
-    for y in 0..plot_height {
-        let threshold = max_val - (y as f64 / plot_height as f64) * range;
-        let mut chars = String::new();
+    // Create axes with better formatting
+    let x_labels = vec![
+        "0".to_string(),
+        format!("{}", x_max / 2.0),
+        format!("{}", x_max),
+    ];
 
-        for x in 0..plot_width {
-            let idx = ((x as f64) * step) as usize;
-            if idx < data.len() {
-                let val = data[idx];
-                if val.is_finite() && val >= threshold {
-                    chars.push('\u{2588}'); // Full block
-                } else if val.is_finite() && val >= threshold - range / (2.0 * plot_height as f64) {
-                    chars.push('\u{2584}'); // Lower half block
-                } else {
-                    chars.push(' ');
-                }
-            } else {
-                chars.push(' ');
+    let x_axis = Axis::default()
+        .title(dim_name)
+        .style(Style::default().fg(colors.fg0))
+        .bounds([0.0, x_max])
+        .labels(x_labels);
+
+    let y_labels = vec![
+        format!("{:.2e}", y_min),
+        format!("{:.2e}", (y_min + y_max) / 2.0),
+        format!("{:.2e}", y_max),
+    ];
+
+    let y_axis = Axis::default()
+        .title("Value")
+        .style(Style::default().fg(colors.fg0))
+        .bounds([y_min, y_max])
+        .labels(y_labels);
+
+    let chart = Chart::new(datasets)
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(colors.bg2))
+                .title(format!(" {} ", var.name))
+                .title_style(Style::default().fg(colors.yellow)),
+        )
+        .x_axis(x_axis)
+        .y_axis(y_axis);
+
+    f.render_widget(chart, area);
+}
+
+/// Custom heatmap widget for high-performance rendering.
+struct HeatmapWidget<'a> {
+    data: &'a [Vec<f64>],
+    min_val: f64,
+    max_val: f64,
+    palette: ColorPalette,
+    title: String,
+    x_label: String,
+    y_label: String,
+    border_color: Color,
+    title_color: Color,
+    label_color: Color,
+    invalid_color: Color,
+}
+
+impl<'a> HeatmapWidget<'a> {
+    fn new(
+        data: &'a [Vec<f64>],
+        min_val: f64,
+        max_val: f64,
+        palette: ColorPalette,
+    ) -> Self {
+        Self {
+            data,
+            min_val,
+            max_val,
+            palette,
+            title: String::new(),
+            x_label: String::new(),
+            y_label: String::new(),
+            border_color: Color::Gray,
+            title_color: Color::Yellow,
+            label_color: Color::Green,
+            invalid_color: Color::Gray,
+        }
+    }
+
+    fn title(mut self, title: String) -> Self {
+        self.title = title;
+        self
+    }
+
+    fn labels(mut self, x_label: String, y_label: String) -> Self {
+        self.x_label = x_label;
+        self.y_label = y_label;
+        self
+    }
+
+    fn colors(mut self, border: Color, title: Color, label: Color, invalid: Color) -> Self {
+        self.border_color = border;
+        self.title_color = title;
+        self.label_color = label;
+        self.invalid_color = invalid;
+        self
+    }
+}
+
+impl<'a> Widget for HeatmapWidget<'a> {
+    fn render(self, area: Rect, buf: &mut Buffer) {
+        // Draw border and title
+        let block = Block::default()
+            .borders(Borders::ALL)
+            .border_style(Style::default().fg(self.border_color))
+            .title(format!(" {} ", self.title))
+            .title_style(Style::default().fg(self.title_color));
+
+        let inner = block.inner(area);
+        block.render(area, buf);
+
+        if inner.width < 4 || inner.height < 4 {
+            return;
+        }
+
+        let rows = self.data.len();
+        let cols = if rows > 0 { self.data[0].len() } else { 0 };
+
+        if rows == 0 || cols == 0 {
+            return;
+        }
+
+        let range = if (self.max_val - self.min_val).abs() < 1e-10 {
+            1.0
+        } else {
+            self.max_val - self.min_val
+        };
+
+        // Reserve space for colorbar (2 lines) and labels (1 line)
+        let heatmap_height = (inner.height.saturating_sub(3)) as usize;
+        let heatmap_width = inner.width as usize;
+
+        // Render colorbar
+        let colorbar_y = inner.y;
+        let colorbar_width = 40.min(heatmap_width.saturating_sub(30));
+        let colorbar_start_x = inner.x + 1;
+
+        for i in 0..colorbar_width {
+            let t = i as f64 / colorbar_width as f64;
+            let color = self.palette.color(t);
+            let x = colorbar_start_x + i as u16;
+            if x < inner.x + inner.width {
+                buf.cell_mut((x, colorbar_y))
+                    .unwrap()
+                    .set_char('█')
+                    .set_fg(color);
             }
         }
 
-        lines.push(Line::from(Span::styled(chars, Style::default().fg(colors.aqua))));
+        // Render min/max labels
+        let min_label = format!("{:.2e}", self.min_val);
+        let max_label = format!("{:.2e}", self.max_val);
+        let palette_label = format!("[{}]", self.palette.name());
+
+        for (i, ch) in min_label.chars().enumerate() {
+            let x = colorbar_start_x + colorbar_width as u16 + 1 + i as u16;
+            if x < inner.x + inner.width {
+                if let Some(cell) = buf.cell_mut((x, colorbar_y)) {
+                    cell.set_char(ch).set_fg(self.label_color);
+                }
+            }
+        }
+
+        for (i, ch) in max_label.chars().enumerate() {
+            let x = colorbar_start_x + colorbar_width as u16 + min_label.len() as u16 + 3 + i as u16;
+            if x < inner.x + inner.width {
+                if let Some(cell) = buf.cell_mut((x, colorbar_y)) {
+                    cell.set_char(ch).set_fg(self.label_color);
+                }
+            }
+        }
+
+        for (i, ch) in palette_label.chars().enumerate() {
+            let x = colorbar_start_x + colorbar_width as u16 + min_label.len() as u16 + max_label.len() as u16 + 5 + i as u16;
+            if x < inner.x + inner.width {
+                if let Some(cell) = buf.cell_mut((x, colorbar_y)) {
+                    cell.set_char(ch).set_fg(self.label_color);
+                }
+            }
+        }
+
+        // Render heatmap - direct buffer writing for maximum performance
+        let row_step = (rows as f64 / heatmap_height as f64).max(1.0);
+        let col_step = (cols as f64 / heatmap_width as f64).max(1.0);
+
+        let heatmap_start_y = inner.y + 2;
+
+        for y in 0..heatmap_height {
+            let row_idx = ((y as f64) * row_step) as usize;
+            if row_idx >= rows {
+                break;
+            }
+
+            let screen_y = heatmap_start_y + y as u16;
+            if screen_y >= inner.y + inner.height - 1 {
+                break;
+            }
+
+            for x in 0..heatmap_width {
+                let col_idx = ((x as f64) * col_step) as usize;
+                if col_idx >= cols {
+                    break;
+                }
+
+                let screen_x = inner.x + x as u16;
+                if screen_x >= inner.x + inner.width {
+                    break;
+                }
+
+                let val = self.data[row_idx][col_idx];
+                if val.is_finite() {
+                    let normalized = ((val - self.min_val) / range).clamp(0.0, 1.0);
+                    let color = self.palette.color(normalized);
+                    if let Some(cell) = buf.cell_mut((screen_x, screen_y)) {
+                        cell.set_char('█').set_fg(color);
+                    }
+                } else {
+                    if let Some(cell) = buf.cell_mut((screen_x, screen_y)) {
+                        cell.set_char('?').set_fg(self.invalid_color);
+                    }
+                }
+            }
+        }
+
+        // Render axis labels at bottom
+        let label_y = inner.y + inner.height - 1;
+        let label_text = format!("Y: {} | X: {}", self.y_label, self.x_label);
+        for (i, ch) in label_text.chars().enumerate() {
+            let x = inner.x + i as u16;
+            if x < inner.x + inner.width {
+                if let Some(cell) = buf.cell_mut((x, label_y)) {
+                    cell.set_char(ch).set_fg(self.label_color);
+                }
+            }
+        }
     }
-
-    lines.push(Line::from(format!("{:.2e}", min_val)));
-    lines.push(Line::from(format!(
-        "0{:>width$}{}",
-        "",
-        data.len() - 1,
-        width = plot_width.saturating_sub(10)
-    )));
-
-    let paragraph = Paragraph::new(lines)
-        .style(Style::default().fg(colors.fg0))
-        .block(Block::default());
-
-    f.render_widget(paragraph, area);
 }
 
 fn draw_heatmap_view(
@@ -556,7 +934,11 @@ fn draw_heatmap_view(
     }
 
     // Get 2D slice
-    let data_2d = var.get_2d_slice(state.display_dims.0, state.display_dims.1, &state.slice_indices);
+    let data_2d = var.get_2d_slice(
+        state.display_dims.0,
+        state.display_dims.1,
+        &state.slice_indices,
+    );
 
     if data_2d.is_empty() || data_2d[0].is_empty() {
         let para = Paragraph::new("No data to display")
@@ -575,78 +957,23 @@ fn draw_heatmap_view(
             (min.min(v), max.max(v))
         });
 
-    let range = if (max_val - min_val).abs() < 1e-10 {
-        1.0
-    } else {
-        max_val - min_val
-    };
+    let dim1_name = var
+        .dim_names
+        .get(state.display_dims.0)
+        .map(|s| s.as_str())
+        .unwrap_or("dim0");
+    let dim2_name = var
+        .dim_names
+        .get(state.display_dims.1)
+        .map(|s| s.as_str())
+        .unwrap_or("dim1");
 
-    let heatmap_height = area.height.saturating_sub(3) as usize;
-    let heatmap_width = area.width.saturating_sub(2) as usize;
+    let heatmap = HeatmapWidget::new(&data_2d, min_val, max_val, state.color_palette)
+        .title(var.name.clone())
+        .labels(dim2_name.to_string(), dim1_name.to_string())
+        .colors(colors.bg2, colors.yellow, colors.green, colors.gray);
 
-    if heatmap_height == 0 || heatmap_width == 0 {
-        return;
-    }
-
-    let rows = data_2d.len();
-    let cols = data_2d[0].len();
-
-    // Unicode block characters for heatmap: ░▒▓█
-    let heat_chars = [' ', '\u{2591}', '\u{2592}', '\u{2593}', '\u{2588}'];
-
-    let mut lines = Vec::new();
-
-    // Add colorbar legend
-    lines.push(Line::from(vec![
-        Span::raw("Low "),
-        Span::styled("\u{2591}\u{2592}\u{2593}\u{2588}", Style::default().fg(colors.aqua)),
-        Span::raw(" High | "),
-        Span::styled(
-            format!("[{:.2e}, {:.2e}]", min_val, max_val),
-            Style::default().fg(colors.green),
-        ),
-    ]));
-
-    // Sample and render
-    let row_step = (rows as f64 / heatmap_height as f64).max(1.0);
-    let col_step = (cols as f64 / heatmap_width as f64).max(1.0);
-
-    for y in 0..heatmap_height {
-        let row_idx = ((y as f64) * row_step) as usize;
-        if row_idx >= rows {
-            break;
-        }
-
-        let mut chars = String::new();
-        for x in 0..heatmap_width {
-            let col_idx = ((x as f64) * col_step) as usize;
-            if col_idx >= cols {
-                break;
-            }
-
-            let val = data_2d[row_idx][col_idx];
-            if val.is_finite() {
-                let normalized = ((val - min_val) / range).clamp(0.0, 1.0);
-                let idx = (normalized * 4.0).floor() as usize;
-                chars.push(heat_chars[idx.min(4)]);
-            } else {
-                chars.push('?');
-            }
-        }
-
-        lines.push(Line::from(Span::styled(chars, Style::default().fg(colors.aqua))));
-    }
-
-    // Add axis labels
-    let dim1_name = var.dim_names.get(state.display_dims.0).map(|s| s.as_str()).unwrap_or("dim0");
-    let dim2_name = var.dim_names.get(state.display_dims.1).map(|s| s.as_str()).unwrap_or("dim1");
-    lines.push(Line::from(format!("Y: {} | X: {}", dim1_name, dim2_name)));
-
-    let paragraph = Paragraph::new(lines)
-        .style(Style::default().fg(colors.fg0))
-        .block(Block::default());
-
-    f.render_widget(paragraph, area);
+    f.render_widget(heatmap, area);
 }
 
 fn draw_dimension_selectors(
@@ -656,34 +983,71 @@ fn draw_dimension_selectors(
     var: &LoadedVariable,
     colors: &ThemeColors,
 ) {
-    let mut spans = Vec::new();
-    spans.push(Span::styled("Slices: ", Style::default().fg(colors.green)));
+    let mut lines = Vec::new();
 
-    for (i, (dim_name, &size)) in var.dim_names.iter().zip(var.shape.iter()).enumerate() {
-        // Skip display dimensions
-        if i == state.display_dims.0 || i == state.display_dims.1 {
-            continue;
+    // First line: Display dimensions
+    let mut display_spans = vec![
+        Span::styled("Display: ", Style::default().fg(colors.green)),
+    ];
+
+    let dim1_name = var.dim_names.get(state.display_dims.0).map(|s| s.as_str()).unwrap_or("?");
+    let dim2_name = var.dim_names.get(state.display_dims.1).map(|s| s.as_str()).unwrap_or("?");
+    let dim1_size = var.shape.get(state.display_dims.0).copied().unwrap_or(0);
+    let dim2_size = var.shape.get(state.display_dims.1).copied().unwrap_or(0);
+
+    display_spans.push(Span::styled(
+        format!("Y: {}[{}] ", dim1_name, dim1_size),
+        Style::default().fg(colors.aqua),
+    ));
+    display_spans.push(Span::styled(
+        format!("X: {}[{}]", dim2_name, dim2_size),
+        Style::default().fg(colors.aqua),
+    ));
+
+    lines.push(Line::from(display_spans));
+
+    // Second line: Slice selectors (for non-display dimensions)
+    let mut slice_spans = vec![
+        Span::styled("Slices: ", Style::default().fg(colors.green)),
+    ];
+
+    let has_slices = var.dim_names.iter().zip(var.shape.iter()).enumerate()
+        .any(|(i, _)| i != state.display_dims.0 && i != state.display_dims.1);
+
+    if has_slices {
+        for (i, (dim_name, &size)) in var.dim_names.iter().zip(var.shape.iter()).enumerate() {
+            // Skip display dimensions
+            if i == state.display_dims.0 || i == state.display_dims.1 {
+                continue;
+            }
+
+            let is_active = state.active_dim_selector == Some(i);
+            let idx = state.slice_indices.get(i).copied().unwrap_or(0);
+
+            let style = if is_active {
+                Style::default()
+                    .fg(colors.bg0)
+                    .bg(colors.yellow)
+                    .add_modifier(Modifier::BOLD)
+            } else {
+                Style::default().fg(colors.fg0)
+            };
+
+            slice_spans.push(Span::styled(
+                format!(" {}={}/{} ", dim_name, idx, size - 1),
+                style,
+            ));
         }
-
-        let is_active = state.active_dim_selector == Some(i);
-        let idx = state.slice_indices.get(i).copied().unwrap_or(0);
-
-        let style = if is_active {
-            Style::default()
-                .fg(colors.bg0)
-                .bg(colors.yellow)
-                .add_modifier(Modifier::BOLD)
-        } else {
-            Style::default().fg(colors.aqua)
-        };
-
-        spans.push(Span::styled(
-            format!(" {}[{}/{}] ", dim_name, idx, size - 1),
-            style,
+        lines.push(Line::from(slice_spans));
+    } else {
+        slice_spans.push(Span::styled(
+            "(none - 2D data)",
+            Style::default().fg(colors.gray),
         ));
+        lines.push(Line::from(slice_spans));
     }
 
-    let paragraph = Paragraph::new(Line::from(spans))
+    let paragraph = Paragraph::new(lines)
         .alignment(Alignment::Center)
         .block(
             Block::default()
@@ -695,7 +1059,7 @@ fn draw_dimension_selectors(
 }
 
 fn draw_footer(f: &mut Frame<'_>, area: Rect, colors: &ThemeColors) {
-    let help = "Tab: View | hjkl/Arrows: Pan | [/]: Dim | +/-: Slice | Esc: Close";
+    let help = "Tab: View | C: Palette | Arrows: Pan | Shift+Tab: Dim | PgUp/PgDn: Slice | Esc: Close";
     let paragraph = Paragraph::new(help)
         .style(Style::default().fg(colors.green))
         .alignment(Alignment::Center);

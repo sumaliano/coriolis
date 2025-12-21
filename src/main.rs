@@ -113,6 +113,12 @@ fn run_app<B: ratatui::backend::Backend>(terminal: &mut Terminal<B>, mut app: Ap
                             app.overlay.cycle_view_mode();
                             app.status = format!("View: {}", app.overlay.view_mode.name());
                         }
+                        // Cycle color palette with C
+                        (KeyModifiers::NONE, KeyCode::Char('c'))
+                        | (KeyModifiers::NONE, KeyCode::Char('C')) => {
+                            app.overlay.cycle_color_palette();
+                            app.status = format!("Palette: {}", app.overlay.color_palette.name());
+                        }
                         // Pan with hjkl or arrows
                         (KeyModifiers::NONE, KeyCode::Up)
                         | (KeyModifiers::NONE, KeyCode::Char('k')) => {
@@ -130,19 +136,25 @@ fn run_app<B: ratatui::backend::Backend>(terminal: &mut Terminal<B>, mut app: Ap
                         | (KeyModifiers::NONE, KeyCode::Char('l')) => {
                             app.overlay.scroll_right(1);
                         }
-                        // Page up/down
+                        // Page up/down for large scrolling
                         (KeyModifiers::CONTROL, KeyCode::Char('u')) => {
                             app.overlay.scroll_up(10);
                         }
                         (KeyModifiers::CONTROL, KeyCode::Char('d')) => {
                             app.overlay.scroll_down(10);
                         }
-                        // Dimension selector navigation (for 3D+ data)
-                        (KeyModifiers::NONE, KeyCode::Char('['))
-                        | (KeyModifiers::NONE, KeyCode::Char(']')) => {
+                        // Dimension selector navigation (Tab through dimensions for 3D+ data)
+                        (KeyModifiers::SHIFT, KeyCode::Tab) => {
                             app.overlay.next_dim_selector();
                         }
-                        // Increment/decrement slice index
+                        // Slice navigation with PageUp/PageDown
+                        (KeyModifiers::NONE, KeyCode::PageUp) => {
+                            app.overlay.increment_active_slice();
+                        }
+                        (KeyModifiers::NONE, KeyCode::PageDown) => {
+                            app.overlay.decrement_active_slice();
+                        }
+                        // Also keep +/- for slice navigation
                         (KeyModifiers::NONE, KeyCode::Char('+'))
                         | (KeyModifiers::NONE, KeyCode::Char('=')) => {
                             app.overlay.increment_active_slice();
