@@ -95,17 +95,17 @@ fn draw_header(f: &mut Frame<'_>, area: Rect, var: &LoadedVariable, colors: &The
 
     // Statistics
     let mut stats = Vec::new();
-    if let Some((min, max)) = var.data.min_max() {
+    if let Some((min, max)) = var.min_max() {
         stats.push(format!("Min: {:.6}", min));
         stats.push(format!("Max: {:.6}", max));
     }
-    if let Some(mean) = var.data.mean() {
+    if let Some(mean) = var.mean_value() {
         stats.push(format!("Mean: {:.6}", mean));
     }
-    if let Some(std) = var.data.std() {
+    if let Some(std) = var.std_value() {
         stats.push(format!("Std: {:.6}", std));
     }
-    stats.push(format!("Valid: {}", var.data.valid_count()));
+    stats.push(format!("Valid: {}", var.valid_count()));
 
     if !stats.is_empty() {
         lines.push(Line::from(Span::styled(
@@ -144,9 +144,10 @@ fn draw_table_view(
 
     // Get data slice efficiently - avoid repeated get_value calls
     let data_slice = if var.ndim() == 0 {
-        vec![vec![var.data.to_f64().first().copied().unwrap_or(f64::NAN)]]
+        let scalar = var.data.iter().next().copied().unwrap_or(f64::NAN);
+        vec![vec![scalar]]
     } else if var.ndim() == 1 {
-        let data = var.data.to_f64();
+        let data: Vec<f64> = var.data.iter().copied().collect();
         vec![data]
     } else {
         // Get 2D slice once - much faster than repeated get_value calls
@@ -241,7 +242,7 @@ fn draw_plot1d_view(
     };
 
     let data = if var.ndim() <= 1 {
-        var.data.to_f64()
+        var.data.iter().copied().collect::<Vec<f64>>()
     } else {
         var.get_1d_slice(slice_dim, &state.slicing.slice_indices)
     };
@@ -257,8 +258,9 @@ fn draw_plot1d_view(
     // Find min/max for scaling
     let (min_val, max_val) = data
         .iter()
-        .filter(|v| v.is_finite())
-        .fold((f64::INFINITY, f64::NEG_INFINITY), |(min, max), &v| {
+        .copied()
+        .filter(|v: &f64| v.is_finite())
+        .fold((f64::INFINITY, f64::NEG_INFINITY), |(min, max), v: f64| {
             (min.min(v), max.max(v))
         });
 
@@ -271,7 +273,7 @@ fn draw_plot1d_view(
     let chart_data: Vec<(f64, f64)> = data
         .iter()
         .enumerate()
-        .filter(|(_, &v)| v.is_finite())
+        .filter(|(_, &v): &(usize, &f64)| v.is_finite())
         .map(|(i, &v)| (i as f64, v))
         .collect();
 

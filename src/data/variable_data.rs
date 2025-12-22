@@ -1,154 +1,11 @@
 //! Variable data reading and manipulation.
 
 use crate::error::{CoriolisError, Result};
+use ndarray::{ArrayD, IxDyn};
 use netcdf::types::{FloatType, IntType, NcVariableType};
 use std::path::Path;
 
-/// Numeric data that can be visualized.
-#[derive(Debug, Clone)]
-pub enum VariableData {
-    /// 64-bit floating point data.
-    F64(Vec<f64>),
-    /// 32-bit floating point data.
-    F32(Vec<f32>),
-    /// 64-bit integer data.
-    I64(Vec<i64>),
-    /// 32-bit integer data.
-    I32(Vec<i32>),
-    /// 16-bit integer data.
-    I16(Vec<i16>),
-    /// 8-bit integer data.
-    I8(Vec<i8>),
-    /// Unsigned 64-bit integer data.
-    U64(Vec<u64>),
-    /// Unsigned 32-bit integer data.
-    U32(Vec<u32>),
-    /// Unsigned 16-bit integer data.
-    U16(Vec<u16>),
-    /// Unsigned 8-bit integer data.
-    U8(Vec<u8>),
-}
-
-#[allow(dead_code)]
-impl VariableData {
-    /// Convert all data to f64 for visualization.
-    pub fn to_f64(&self) -> Vec<f64> {
-        match self {
-            VariableData::F64(v) => v.clone(),
-            VariableData::F32(v) => v.iter().map(|&x| x as f64).collect(),
-            VariableData::I64(v) => v.iter().map(|&x| x as f64).collect(),
-            VariableData::I32(v) => v.iter().map(|&x| x as f64).collect(),
-            VariableData::I16(v) => v.iter().map(|&x| x as f64).collect(),
-            VariableData::I8(v) => v.iter().map(|&x| x as f64).collect(),
-            VariableData::U64(v) => v.iter().map(|&x| x as f64).collect(),
-            VariableData::U32(v) => v.iter().map(|&x| x as f64).collect(),
-            VariableData::U16(v) => v.iter().map(|&x| x as f64).collect(),
-            VariableData::U8(v) => v.iter().map(|&x| x as f64).collect(),
-        }
-    }
-
-    /// Get the length of the data.
-    pub fn len(&self) -> usize {
-        match self {
-            VariableData::F64(v) => v.len(),
-            VariableData::F32(v) => v.len(),
-            VariableData::I64(v) => v.len(),
-            VariableData::I32(v) => v.len(),
-            VariableData::I16(v) => v.len(),
-            VariableData::I8(v) => v.len(),
-            VariableData::U64(v) => v.len(),
-            VariableData::U32(v) => v.len(),
-            VariableData::U16(v) => v.len(),
-            VariableData::U8(v) => v.len(),
-        }
-    }
-
-    /// Check if data is empty.
-    pub fn is_empty(&self) -> bool {
-        self.len() == 0
-    }
-
-    /// Get min and max values.
-    pub fn min_max(&self) -> Option<(f64, f64)> {
-        let data = self.to_f64();
-        if data.is_empty() {
-            return None;
-        }
-
-        let mut min = f64::INFINITY;
-        let mut max = f64::NEG_INFINITY;
-
-        for &v in &data {
-            if v.is_finite() {
-                if v < min {
-                    min = v;
-                }
-                if v > max {
-                    max = v;
-                }
-            }
-        }
-
-        if min.is_finite() && max.is_finite() {
-            Some((min, max))
-        } else {
-            None
-        }
-    }
-
-    /// Get mean value.
-    pub fn mean(&self) -> Option<f64> {
-        let data = self.to_f64();
-        if data.is_empty() {
-            return None;
-        }
-
-        let mut sum = 0.0;
-        let mut count = 0;
-
-        for &v in &data {
-            if v.is_finite() {
-                sum += v;
-                count += 1;
-            }
-        }
-
-        if count > 0 {
-            Some(sum / count as f64)
-        } else {
-            None
-        }
-    }
-
-    /// Get standard deviation.
-    pub fn std(&self) -> Option<f64> {
-        let mean = self.mean()?;
-        let data = self.to_f64();
-
-        let mut sum_sq_diff = 0.0;
-        let mut count = 0;
-
-        for &v in &data {
-            if v.is_finite() {
-                let diff = v - mean;
-                sum_sq_diff += diff * diff;
-                count += 1;
-            }
-        }
-
-        if count > 1 {
-            Some((sum_sq_diff / (count - 1) as f64).sqrt())
-        } else {
-            None
-        }
-    }
-
-    /// Count valid (finite) values.
-    pub fn valid_count(&self) -> usize {
-        let data = self.to_f64();
-        data.iter().filter(|v| v.is_finite()).count()
-    }
-}
+// Previous `VariableData` enum removed: we now load directly into `ArrayD<f64>`.
 
 /// Loaded variable with its data and metadata.
 #[derive(Debug, Clone)]
@@ -158,7 +15,7 @@ pub struct LoadedVariable {
     /// Variable path.
     #[allow(dead_code)]
     pub path: String,
-    /// Shape of the data.
+    /// Shape of the data (redundant with data.shape(), but kept for convenience).
     pub shape: Vec<usize>,
     /// Dimension names.
     pub dim_names: Vec<String>,
@@ -167,108 +24,97 @@ pub struct LoadedVariable {
     pub attributes: std::collections::HashMap<String, String>,
     /// Variable data type.
     pub dtype: String,
-    /// The actual data (flattened).
-    pub data: VariableData,
-    /// Scale factor for unpacking data (CF convention).
-    pub scale_factor: f64,
-    /// Add offset for unpacking data (CF convention).
-    pub add_offset: f64,
+    /// The actual multi-dimensional data as f64.
+    /// This is an N-dimensional array that preserves the structure of the NetCDF variable.
+    pub data: ArrayD<f64>,
+    /// Minimum and maximum values (pre-computed for performance).
+    pub min_max: Option<(f64, f64)>,
+    /// Mean value (pre-computed for performance).
+    pub mean: Option<f64>,
+    /// Standard deviation (pre-computed for performance).
+    pub std: Option<f64>,
+    /// Count of valid (non-NaN) values.
+    pub valid_count: usize,
 }
 
 #[allow(dead_code)]
 impl LoadedVariable {
     /// Get the number of dimensions.
     pub fn ndim(&self) -> usize {
-        self.shape.len()
+        self.data.ndim()
     }
 
     /// Get total number of elements.
     pub fn total_elements(&self) -> usize {
-        self.shape.iter().product()
+        self.data.len()
     }
 
-    /// Get data as f64 with scale_factor and add_offset applied (CF convention).
-    pub fn get_scaled_data(&self) -> Vec<f64> {
-        let raw_data = self.data.to_f64();
-        if self.scale_factor == 1.0 && self.add_offset == 0.0 {
-            // No scaling needed
-            raw_data
-        } else {
-            // Apply: actual_value = stored_value * scale_factor + add_offset
-            raw_data.iter()
-                .map(|&v| {
-                    if v.is_finite() {
-                        v * self.scale_factor + self.add_offset
-                    } else {
-                        v // Keep NaN/Inf as is
-                    }
-                })
-                .collect()
-        }
+    /// Get minimum and maximum values.
+    pub fn min_max(&self) -> Option<(f64, f64)> {
+        self.min_max
     }
 
-    /// Create a temporary VariableData with scaled values for statistics.
-    pub fn get_scaled_variable_data(&self) -> VariableData {
-        VariableData::F64(self.get_scaled_data())
+    /// Get mean value.
+    pub fn mean_value(&self) -> Option<f64> {
+        self.mean
     }
 
-    /// Convert linear index to multi-dimensional indices.
-    pub fn linear_to_indices(&self, linear: usize) -> Vec<usize> {
-        let mut indices = vec![0; self.shape.len()];
-        let mut remaining = linear;
-
-        for i in (0..self.shape.len()).rev() {
-            indices[i] = remaining % self.shape[i];
-            remaining /= self.shape[i];
-        }
-
-        indices
+    /// Get standard deviation.
+    pub fn std_value(&self) -> Option<f64> {
+        self.std
     }
 
-    /// Convert multi-dimensional indices to linear index.
-    pub fn indices_to_linear(&self, indices: &[usize]) -> usize {
-        let mut linear = 0;
-        let mut stride = 1;
-
-        for i in (0..self.shape.len()).rev() {
-            linear += indices[i] * stride;
-            stride *= self.shape[i];
-        }
-
-        linear
+    /// Get count of valid values.
+    pub fn valid_count(&self) -> usize {
+        self.valid_count
     }
 
     /// Get a 1D slice along a dimension, fixing all other dimensions.
+    ///
+    /// # Arguments
+    /// * `dim` - The dimension to extract (will vary)
+    /// * `fixed_indices` - Indices for all other dimensions (fixed values)
+    ///
+    /// # Returns
+    /// A 1D vector of values along the specified dimension.
     pub fn get_1d_slice(&self, dim: usize, fixed_indices: &[usize]) -> Vec<f64> {
-        let data = self.get_scaled_data();
+        // Use direct IxDyn indexing to avoid borrow/shape juggling.
         let mut result = Vec::with_capacity(self.shape[dim]);
-
         for i in 0..self.shape[dim] {
-            let mut indices = fixed_indices.to_vec();
-            indices[dim] = i;
-            let linear = self.indices_to_linear(&indices);
-            if linear < data.len() {
-                result.push(data[linear]);
+            let mut idx = fixed_indices.to_vec();
+            idx[dim] = i;
+            if let Some(&val) = self.data.get(IxDyn(&idx)) {
+                result.push(val);
             }
         }
-
         result
     }
 
     /// Get a 2D slice, fixing all dimensions except two.
-    pub fn get_2d_slice(&self, dim1: usize, dim2: usize, fixed_indices: &[usize]) -> Vec<Vec<f64>> {
-        let data = self.get_scaled_data();
-        let mut result = Vec::with_capacity(self.shape[dim1]);
+    ///
+    /// # Arguments
+    /// * `dim_y` - The dimension for rows (Y-axis, varies in outer loop)
+    /// * `dim_x` - The dimension for columns (X-axis, varies in inner loop)
+    /// * `fixed_indices` - Indices for all other dimensions
+    ///
+    /// # Returns
+    /// A 2D vector where `result[y][x]` corresponds to data where dim_y=y and dim_x=x.
+    /// This ensures correct visual mapping: row index → Y dimension, col index → X dimension.
+    pub fn get_2d_slice(&self, dim_y: usize, dim_x: usize, fixed_indices: &[usize]) -> Vec<Vec<f64>> {
+        let mut result = Vec::with_capacity(self.shape[dim_y]);
 
-        for i in 0..self.shape[dim1] {
-            let mut row = Vec::with_capacity(self.shape[dim2]);
-            for j in 0..self.shape[dim2] {
-                let mut indices = fixed_indices.to_vec();
-                indices[dim1] = i;
-                indices[dim2] = j;
-                let linear = self.indices_to_linear(&indices);
-                if linear < data.len() {
-                    row.push(data[linear]);
+        for y in 0..self.shape[dim_y] {
+            let mut row = Vec::with_capacity(self.shape[dim_x]);
+            for x in 0..self.shape[dim_x] {
+                let mut idx = fixed_indices.to_vec();
+                idx[dim_y] = y;
+                idx[dim_x] = x;
+
+                // Use ndarray's indexing - it handles all the complexity!
+                if let Some(&val) = self.data.get(IxDyn(&idx)) {
+                    row.push(val);
+                } else {
+                    row.push(f64::NAN);
                 }
             }
             result.push(row);
@@ -277,11 +123,9 @@ impl LoadedVariable {
         result
     }
 
-    /// Get value at given indices.
+    /// Get value at given multi-dimensional indices.
     pub fn get_value(&self, indices: &[usize]) -> Option<f64> {
-        let linear = self.indices_to_linear(indices);
-        let data = self.get_scaled_data();
-        data.get(linear).copied()
+        self.data.get(IxDyn(indices)).copied()
     }
 }
 
@@ -328,8 +172,41 @@ pub fn read_variable(file_path: &Path, var_path: &str) -> Result<LoadedVariable>
     // Get data type
     let dtype = format!("{:?}", var.vartype()).replace("NcVariableType::", "").to_lowercase();
 
-    // Read the data based on type
-    let data = read_variable_data(&var)?;
+    // Read the data into f64 array
+    let mut data = read_variable_array(&var, &shape)?;
+
+    // Apply CF scale/offset if present
+    if (scale_factor - 1.0).abs() > 0.0 || add_offset != 0.0 {
+        data.mapv_inplace(|v| v * scale_factor + add_offset);
+    }
+
+    // Compute statistics
+    let mut min = f64::INFINITY;
+    let mut max = f64::NEG_INFINITY;
+    let mut sum = 0.0f64;
+    let mut count = 0usize;
+    for &v in data.iter() {
+        if v.is_finite() {
+            if v < min { min = v; }
+            if v > max { max = v; }
+            sum += v;
+            count += 1;
+        }
+    }
+    let min_max = if count > 0 { Some((min, max)) } else { None };
+    let mean = if count > 0 { Some(sum / count as f64) } else { None };
+    let std = if count > 1 {
+        let mean_val = mean.unwrap();
+        let mut ssd = 0.0;
+        for &v in data.iter() {
+            if v.is_finite() {
+                let d = v - mean_val;
+                ssd += d * d;
+            }
+        }
+        Some((ssd / (count - 1) as f64).sqrt())
+    } else { None };
+    let valid_count = count;
 
     Ok(LoadedVariable {
         name: var_name.to_string(),
@@ -339,74 +216,82 @@ pub fn read_variable(file_path: &Path, var_path: &str) -> Result<LoadedVariable>
         attributes,
         dtype,
         data,
-        scale_factor,
-        add_offset,
+        min_max,
+        mean,
+        std,
+        valid_count,
     })
 }
 
-fn read_variable_data(var: &netcdf::Variable<'_>) -> Result<VariableData> {
+fn read_variable_array(var: &netcdf::Variable<'_>, shape: &Vec<usize>) -> Result<ArrayD<f64>> {
     let vartype = var.vartype();
+
+    // Helper to build ArrayD<f64> from a Vec<f64> and the known shape
+    let from_vec = |v: Vec<f64>| -> Result<ArrayD<f64>> {
+        ndarray::ArrayD::from_shape_vec(IxDyn(shape), v)
+            .map_err(|e| CoriolisError::NetCDF(format!("Invalid shape/data size: {}", e)))
+    };
 
     match vartype {
         NcVariableType::Float(FloatType::F64) => {
             let values: Vec<f64> = var
                 .get_values(..)
                 .map_err(|e| CoriolisError::NetCDF(format!("Failed to read f64 data: {}", e)))?;
-            Ok(VariableData::F64(values))
+            from_vec(values)
         }
         NcVariableType::Float(FloatType::F32) => {
             let values: Vec<f32> = var
                 .get_values(..)
                 .map_err(|e| CoriolisError::NetCDF(format!("Failed to read f32 data: {}", e)))?;
-            Ok(VariableData::F32(values))
+            from_vec(values.into_iter().map(|x| x as f64).collect())
         }
         NcVariableType::Int(IntType::I64) => {
             let values: Vec<i64> = var
                 .get_values(..)
                 .map_err(|e| CoriolisError::NetCDF(format!("Failed to read i64 data: {}", e)))?;
-            Ok(VariableData::I64(values))
+            from_vec(values.into_iter().map(|x| x as f64).collect())
         }
         NcVariableType::Int(IntType::I32) => {
             let values: Vec<i32> = var
                 .get_values(..)
                 .map_err(|e| CoriolisError::NetCDF(format!("Failed to read i32 data: {}", e)))?;
-            Ok(VariableData::I32(values))
+            from_vec(values.into_iter().map(|x| x as f64).collect())
         }
         NcVariableType::Int(IntType::I16) => {
             let values: Vec<i16> = var
                 .get_values(..)
                 .map_err(|e| CoriolisError::NetCDF(format!("Failed to read i16 data: {}", e)))?;
-            Ok(VariableData::I16(values))
+            from_vec(values.into_iter().map(|x| x as f64).collect())
         }
         NcVariableType::Int(IntType::I8) => {
             let values: Vec<i8> = var
                 .get_values(..)
                 .map_err(|e| CoriolisError::NetCDF(format!("Failed to read i8 data: {}", e)))?;
-            Ok(VariableData::I8(values))
+            from_vec(values.into_iter().map(|x| x as f64).collect())
         }
         NcVariableType::Int(IntType::U64) => {
             let values: Vec<u64> = var
                 .get_values(..)
                 .map_err(|e| CoriolisError::NetCDF(format!("Failed to read u64 data: {}", e)))?;
-            Ok(VariableData::U64(values))
+            from_vec(values.into_iter().map(|x| x as f64).collect())
         }
         NcVariableType::Int(IntType::U32) => {
             let values: Vec<u32> = var
                 .get_values(..)
                 .map_err(|e| CoriolisError::NetCDF(format!("Failed to read u32 data: {}", e)))?;
-            Ok(VariableData::U32(values))
+            from_vec(values.into_iter().map(|x| x as f64).collect())
         }
         NcVariableType::Int(IntType::U16) => {
             let values: Vec<u16> = var
                 .get_values(..)
                 .map_err(|e| CoriolisError::NetCDF(format!("Failed to read u16 data: {}", e)))?;
-            Ok(VariableData::U16(values))
+            from_vec(values.into_iter().map(|x| x as f64).collect())
         }
         NcVariableType::Int(IntType::U8) => {
             let values: Vec<u8> = var
                 .get_values(..)
                 .map_err(|e| CoriolisError::NetCDF(format!("Failed to read u8 data: {}", e)))?;
-            Ok(VariableData::U8(values))
+            from_vec(values.into_iter().map(|x| x as f64).collect())
         }
         NcVariableType::Char | NcVariableType::String => {
             Err(CoriolisError::NetCDF(
