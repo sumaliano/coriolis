@@ -12,6 +12,15 @@
 //! - Gruvbox color themes
 //! - Clipboard integration
 //!
+//! # Architecture
+//!
+//! Coriolis follows a feature-based architecture:
+//! - `overlay`: Data viewer overlay (state + behavior + UI)
+//! - `navigation`: Tree navigation and search (state + behavior)
+//! - `ui`: Shared UI components and themes
+//! - `data`: Data layer (NetCDF reading)
+//! - `util`: Utilities and helpers
+//!
 //! # Example
 //!
 //! ```ignore
@@ -42,7 +51,9 @@ pub mod data;
 pub mod error;
 /// Navigation and search.
 pub mod navigation;
-/// User interface.
+/// Data overlay feature.
+pub mod overlay;
+/// User interface - shared components.
 pub mod ui;
 /// Utility functions.
 pub mod util;

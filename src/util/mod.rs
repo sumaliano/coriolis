@@ -1,8 +1,15 @@
-//! Utility functions.
+//! Utility functions and helpers.
 //!
-//! This module provides helper functions for clipboard operations
-//! and other utilities.
+//! This module contains pure utility functions with no side effects:
+//! - Color mapping functions
+//! - Dimension calculation logic
+//! - Layout configuration constants
+//! - Clipboard operations
 
-mod clipboard;
+pub mod clipboard;
+pub mod colormaps;
+pub mod dimension_calculator;
+pub mod layout_config;
 
-pub use clipboard::{copy_node_info, copy_tree_structure};
+pub use dimension_calculator::DimensionCalculator;
+pub use layout_config::LayoutConfig;

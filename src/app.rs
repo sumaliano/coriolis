@@ -5,7 +5,7 @@ use std::fs;
 
 use crate::data::{read_variable, DataNode, DataReader, DatasetInfo};
 use crate::navigation::{SearchState, TreeState};
-use crate::ui::OverlayState;
+use crate::overlay::OverlayState;
 
 /// Application theme.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

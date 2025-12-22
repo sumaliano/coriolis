@@ -1,6 +1,7 @@
 //! Browser UI rendering.
 
-use super::{draw_overlay, ThemeColors};
+use super::ThemeColors;
+use crate::overlay::ui::draw_overlay;
 use crate::app::App;
 use crate::data::DataNode;
 use ratatui::{

@@ -1,14 +1,9 @@
 //! Coriolis - A terminal-based NetCDF data viewer.
 
-mod app;
-mod data;
-mod error;
-mod navigation;
-mod ui;
-mod util;
-
 use anyhow::Result;
-use app::App;
+use coriolis::app::App;
+use coriolis::ui;
+use coriolis::util;
 use clap::Parser;
 use crossterm::{
     event::{self, Event, KeyCode, KeyModifiers},
@@ -111,13 +106,15 @@ fn run_app<B: ratatui::backend::Backend>(terminal: &mut Terminal<B>, mut app: Ap
                         // Cycle view mode with Tab
                         (KeyModifiers::NONE, KeyCode::Tab) => {
                             app.overlay.cycle_view_mode();
-                            app.status = format!("View: {}", app.overlay.view_mode.name());
+                            let view_name = app.overlay.view_mode.name();
+                            app.overlay.set_status(format!("View: {}", view_name));
                         }
                         // Cycle color palette with C
                         (KeyModifiers::NONE, KeyCode::Char('c'))
                         | (KeyModifiers::NONE, KeyCode::Char('C')) => {
                             app.overlay.cycle_color_palette();
-                            app.status = format!("Palette: {}", app.overlay.color_palette.name());
+                            let palette_name = app.overlay.color_palette.name();
+                            app.overlay.set_status(format!("Palette: {}", palette_name));
                         }
                         // Pan with hjkl or arrows
                         (KeyModifiers::NONE, KeyCode::Up)
@@ -146,8 +143,20 @@ fn run_app<B: ratatui::backend::Backend>(terminal: &mut Terminal<B>, mut app: Ap
                         // Dimension selector navigation (Tab through dimensions for 3D+ data)
                         | (KeyModifiers::NONE, KeyCode::Char('s')) => {
                             app.overlay.next_dim_selector();
-                            if let Some(dim) = app.overlay.active_dim_selector {
-                                app.status = format!("Selected dimension {} for slicing", dim);
+                            let status_msg = if let Some(dim) = app.overlay.slicing.active_dim_selector {
+                                if let Some(ref var) = app.overlay.variable {
+                                    let dim_name = var.dim_names.get(dim)
+                                        .map(|s| s.as_str())
+                                        .unwrap_or("?");
+                                    Some(format!("Slicing dimension: {}", dim_name))
+                                } else {
+                                    None
+                                }
+                            } else {
+                                None
+                            };
+                            if let Some(msg) = status_msg {
+                                app.overlay.set_status(msg);
                             }
                         }
                         // Slice navigation with PageUp/PageDown
@@ -172,17 +181,37 @@ fn run_app<B: ratatui::backend::Backend>(terminal: &mut Terminal<B>, mut app: Ap
                         (KeyModifiers::NONE, KeyCode::Char('r'))
                         | (KeyModifiers::NONE, KeyCode::Char('R')) => {
                             app.overlay.rotate_display_dims();
-                            app.status = "Rotated display dimensions".to_string();
+                            app.overlay.set_status("Rotated Y ↔ X dimensions".to_string());
                         }
                         (KeyModifiers::NONE, KeyCode::Char('y'))
                         | (KeyModifiers::NONE, KeyCode::Char('Y')) => {
                             app.overlay.cycle_display_dim(0);
-                            app.status = "Cycled Y dimension".to_string();
+                            // Show which dimension was selected
+                            let status_msg = if let Some(ref var) = app.overlay.variable {
+                                let dim_idx = app.overlay.slicing.display_dims.0;
+                                let dim_name = var.dim_names.get(dim_idx)
+                                    .map(|s| s.as_str())
+                                    .unwrap_or("?");
+                                format!("Y dimension: {}", dim_name)
+                            } else {
+                                "Cycled Y dimension".to_string()
+                            };
+                            app.overlay.set_status(status_msg);
                         }
                         (KeyModifiers::NONE, KeyCode::Char('x'))
                         | (KeyModifiers::NONE, KeyCode::Char('X')) => {
                             app.overlay.cycle_display_dim(1);
-                            app.status = "Cycled X dimension".to_string();
+                            // Show which dimension was selected
+                            let status_msg = if let Some(ref var) = app.overlay.variable {
+                                let dim_idx = app.overlay.slicing.display_dims.1;
+                                let dim_name = var.dim_names.get(dim_idx)
+                                    .map(|s| s.as_str())
+                                    .unwrap_or("?");
+                                format!("X dimension: {}", dim_name)
+                            } else {
+                                "Cycled X dimension".to_string()
+                            };
+                            app.overlay.set_status(status_msg);
                         }
                         _ => {}
                     }
@@ -339,7 +368,7 @@ fn run_app<B: ratatui::backend::Backend>(terminal: &mut Terminal<B>, mut app: Ap
                                 .as_ref()
                                 .and_then(|p| p.file_name())
                                 .map(|n| n.to_string_lossy().to_string());
-                            match util::copy_tree_structure(
+                            match util::clipboard::copy_tree_structure(
                                 &dataset.root_node,
                                 file_name.as_deref(),
                             ) {
@@ -352,7 +381,7 @@ fn run_app<B: ratatui::backend::Backend>(terminal: &mut Terminal<B>, mut app: Ap
                     },
                     (KeyModifiers::NONE, KeyCode::Char('y')) => {
                         if let Some(node) = app.current_node() {
-                            match util::copy_node_info(node) {
+                            match util::clipboard::copy_node_info(node) {
                                 Ok(_) => app.status = format!("Copied {}!", node.name),
                                 Err(e) => app.status = format!("Copy failed: {}", e),
                             }

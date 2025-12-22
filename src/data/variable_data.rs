@@ -169,6 +169,10 @@ pub struct LoadedVariable {
     pub dtype: String,
     /// The actual data (flattened).
     pub data: VariableData,
+    /// Scale factor for unpacking data (CF convention).
+    pub scale_factor: f64,
+    /// Add offset for unpacking data (CF convention).
+    pub add_offset: f64,
 }
 
 #[allow(dead_code)]
@@ -181,6 +185,31 @@ impl LoadedVariable {
     /// Get total number of elements.
     pub fn total_elements(&self) -> usize {
         self.shape.iter().product()
+    }
+
+    /// Get data as f64 with scale_factor and add_offset applied (CF convention).
+    pub fn get_scaled_data(&self) -> Vec<f64> {
+        let raw_data = self.data.to_f64();
+        if self.scale_factor == 1.0 && self.add_offset == 0.0 {
+            // No scaling needed
+            raw_data
+        } else {
+            // Apply: actual_value = stored_value * scale_factor + add_offset
+            raw_data.iter()
+                .map(|&v| {
+                    if v.is_finite() {
+                        v * self.scale_factor + self.add_offset
+                    } else {
+                        v // Keep NaN/Inf as is
+                    }
+                })
+                .collect()
+        }
+    }
+
+    /// Create a temporary VariableData with scaled values for statistics.
+    pub fn get_scaled_variable_data(&self) -> VariableData {
+        VariableData::F64(self.get_scaled_data())
     }
 
     /// Convert linear index to multi-dimensional indices.
@@ -211,7 +240,7 @@ impl LoadedVariable {
 
     /// Get a 1D slice along a dimension, fixing all other dimensions.
     pub fn get_1d_slice(&self, dim: usize, fixed_indices: &[usize]) -> Vec<f64> {
-        let data = self.data.to_f64();
+        let data = self.get_scaled_data();
         let mut result = Vec::with_capacity(self.shape[dim]);
 
         for i in 0..self.shape[dim] {
@@ -228,7 +257,7 @@ impl LoadedVariable {
 
     /// Get a 2D slice, fixing all dimensions except two.
     pub fn get_2d_slice(&self, dim1: usize, dim2: usize, fixed_indices: &[usize]) -> Vec<Vec<f64>> {
-        let data = self.data.to_f64();
+        let data = self.get_scaled_data();
         let mut result = Vec::with_capacity(self.shape[dim1]);
 
         for i in 0..self.shape[dim1] {
@@ -251,7 +280,7 @@ impl LoadedVariable {
     /// Get value at given indices.
     pub fn get_value(&self, indices: &[usize]) -> Option<f64> {
         let linear = self.indices_to_linear(indices);
-        let data = self.data.to_f64();
+        let data = self.get_scaled_data();
         data.get(linear).copied()
     }
 }
@@ -287,6 +316,15 @@ pub fn read_variable(file_path: &Path, var_path: &str) -> Result<LoadedVariable>
         );
     }
 
+    // Extract scale_factor and add_offset (CF convention)
+    let scale_factor = attributes.get("scale_factor")
+        .and_then(|s| s.parse::<f64>().ok())
+        .unwrap_or(1.0);
+
+    let add_offset = attributes.get("add_offset")
+        .and_then(|s| s.parse::<f64>().ok())
+        .unwrap_or(0.0);
+
     // Get data type
     let dtype = format!("{:?}", var.vartype()).replace("NcVariableType::", "").to_lowercase();
 
@@ -301,6 +339,8 @@ pub fn read_variable(file_path: &Path, var_path: &str) -> Result<LoadedVariable>
         attributes,
         dtype,
         data,
+        scale_factor,
+        add_offset,
     })
 }
 

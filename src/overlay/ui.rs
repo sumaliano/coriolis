@@ -1,10 +1,11 @@
-//! Data viewer overlay for visualizing variable contents.
+//! Data viewer overlay - pure rendering layer.
 
-use super::ThemeColors;
+use super::{OverlayState, ViewMode};
 use crate::data::LoadedVariable;
+use crate::ui::ThemeColors;
 use ratatui::{
     layout::{Alignment, Constraint, Direction, Layout, Rect},
-    style::{Color, Modifier, Style},
+    style::{Modifier, Style},
     text::{Line, Span},
     widgets::{
         Axis, Block, Borders, Cell, Chart, Clear, Dataset, GraphType, Paragraph, Row, Scrollbar,
@@ -12,472 +13,6 @@ use ratatui::{
     },
     Frame,
 };
-
-/// Color palette for heatmap visualization.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ColorPalette {
-    /// Viridis colormap (perceptually uniform, colorblind-friendly).
-    Viridis,
-    /// Plasma colormap (perceptually uniform).
-    Plasma,
-    /// Rainbow/Spectral colormap (traditional, high contrast).
-    Rainbow,
-    /// Blue-White-Red diverging colormap.
-    BlueRed,
-}
-
-impl Default for ColorPalette {
-    fn default() -> Self {
-        Self::Viridis
-    }
-}
-
-impl ColorPalette {
-    /// Get the next palette in cycle.
-    pub fn next(self) -> Self {
-        match self {
-            Self::Viridis => Self::Plasma,
-            Self::Plasma => Self::Rainbow,
-            Self::Rainbow => Self::BlueRed,
-            Self::BlueRed => Self::Viridis,
-        }
-    }
-
-    /// Get palette name.
-    pub fn name(self) -> &'static str {
-        match self {
-            Self::Viridis => "Viridis",
-            Self::Plasma => "Plasma",
-            Self::Rainbow => "Rainbow",
-            Self::BlueRed => "Blue-Red",
-        }
-    }
-
-    /// Map a normalized value (0.0 to 1.0) to an RGB color.
-    pub fn color(self, t: f64) -> Color {
-        let t = t.clamp(0.0, 1.0);
-
-        match self {
-            Self::Viridis => viridis_color(t),
-            Self::Plasma => plasma_color(t),
-            Self::Rainbow => rainbow_color(t),
-            Self::BlueRed => bluered_color(t),
-        }
-    }
-}
-
-/// Viridis colormap approximation.
-fn viridis_color(t: f64) -> Color {
-    // Simplified viridis palette using piecewise linear interpolation
-    let r = if t < 0.5 {
-        68.0 + t * 2.0 * (33.0 - 68.0)
-    } else {
-        33.0 + (t - 0.5) * 2.0 * (253.0 - 33.0)
-    };
-
-    let g = if t < 0.5 {
-        1.0 + t * 2.0 * (104.0 - 1.0)
-    } else {
-        104.0 + (t - 0.5) * 2.0 * (231.0 - 104.0)
-    };
-
-    let b = if t < 0.5 {
-        84.0 + t * 2.0 * (109.0 - 84.0)
-    } else {
-        109.0 + (t - 0.5) * 2.0 * (37.0 - 109.0)
-    };
-
-    Color::Rgb(r as u8, g as u8, b as u8)
-}
-
-/// Plasma colormap approximation.
-fn plasma_color(t: f64) -> Color {
-    let r = if t < 0.5 {
-        13.0 + t * 2.0 * (180.0 - 13.0)
-    } else {
-        180.0 + (t - 0.5) * 2.0 * (240.0 - 180.0)
-    };
-
-    let g = if t < 0.5 {
-        8.0 + t * 2.0 * (54.0 - 8.0)
-    } else {
-        54.0 + (t - 0.5) * 2.0 * (175.0 - 54.0)
-    };
-
-    let b = if t < 0.5 {
-        135.0 + t * 2.0 * (121.0 - 135.0)
-    } else {
-        121.0 + (t - 0.5) * 2.0 * (12.0 - 121.0)
-    };
-
-    Color::Rgb(r as u8, g as u8, b as u8)
-}
-
-/// Rainbow/Spectral colormap.
-fn rainbow_color(t: f64) -> Color {
-    // HSV to RGB conversion with H varying from 240° (blue) to 0° (red)
-    let h = (1.0 - t) * 240.0;
-    let s = 1.0;
-    let v = 1.0;
-
-    let c = v * s;
-    let x = c * (1.0 - ((h / 60.0) % 2.0 - 1.0).abs());
-    let m = v - c;
-
-    let (r, g, b) = if h < 60.0 {
-        (c, x, 0.0)
-    } else if h < 120.0 {
-        (x, c, 0.0)
-    } else if h < 180.0 {
-        (0.0, c, x)
-    } else if h < 240.0 {
-        (0.0, x, c)
-    } else if h < 300.0 {
-        (x, 0.0, c)
-    } else {
-        (c, 0.0, x)
-    };
-
-    Color::Rgb(
-        ((r + m) * 255.0) as u8,
-        ((g + m) * 255.0) as u8,
-        ((b + m) * 255.0) as u8,
-    )
-}
-
-/// Blue-White-Red diverging colormap.
-fn bluered_color(t: f64) -> Color {
-    if t < 0.5 {
-        // Blue to white
-        let t2 = t * 2.0;
-        let r = (t2 * 255.0) as u8;
-        let g = (t2 * 255.0) as u8;
-        let b = 255;
-        Color::Rgb(r, g, b)
-    } else {
-        // White to red
-        let t2 = (t - 0.5) * 2.0;
-        let r = 255;
-        let g = ((1.0 - t2) * 255.0) as u8;
-        let b = ((1.0 - t2) * 255.0) as u8;
-        Color::Rgb(r, g, b)
-    }
-}
-
-/// View mode for the data overlay.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum ViewMode {
-    /// Table view showing raw data values.
-    #[default]
-    Table,
-    /// 1D line plot.
-    Plot1D,
-    /// 2D heatmap visualization.
-    Heatmap,
-}
-
-impl ViewMode {
-    /// Get the next view mode in cycle.
-    pub fn next(self) -> Self {
-        match self {
-            ViewMode::Table => ViewMode::Plot1D,
-            ViewMode::Plot1D => ViewMode::Heatmap,
-            ViewMode::Heatmap => ViewMode::Table,
-        }
-    }
-
-    /// Get the previous view mode in cycle.
-    #[allow(dead_code)]
-    pub fn prev(self) -> Self {
-        match self {
-            ViewMode::Table => ViewMode::Heatmap,
-            ViewMode::Plot1D => ViewMode::Table,
-            ViewMode::Heatmap => ViewMode::Plot1D,
-        }
-    }
-
-    /// Get display name.
-    pub fn name(self) -> &'static str {
-        match self {
-            ViewMode::Table => "Table",
-            ViewMode::Plot1D => "1D Plot",
-            ViewMode::Heatmap => "Heatmap",
-        }
-    }
-}
-
-/// State for the data overlay.
-#[derive(Debug, Clone)]
-pub struct OverlayState {
-    /// Currently loaded variable data.
-    pub variable: Option<LoadedVariable>,
-    /// Current view mode.
-    pub view_mode: ViewMode,
-    /// Color palette for heatmap.
-    pub color_palette: ColorPalette,
-    /// Scroll offset for table view (row, col).
-    pub table_scroll: (usize, usize),
-    /// Selected dimension indices for slicing (for 3D+ data).
-    pub slice_indices: Vec<usize>,
-    /// Which dimensions to display (for 2D views).
-    pub display_dims: (usize, usize),
-    /// Active dimension selector (for 3D+ data).
-    pub active_dim_selector: Option<usize>,
-    /// Is the overlay visible.
-    pub visible: bool,
-    /// Error message if loading failed.
-    pub error: Option<String>,
-}
-
-impl Default for OverlayState {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl OverlayState {
-    /// Create a new overlay state.
-    pub fn new() -> Self {
-        Self {
-            variable: None,
-            view_mode: ViewMode::Table,
-            color_palette: ColorPalette::default(),
-            table_scroll: (0, 0),
-            slice_indices: Vec::new(),
-            display_dims: (0, 1),
-            active_dim_selector: None,
-            visible: false,
-            error: None,
-        }
-    }
-
-    /// Load a variable for display.
-    pub fn load_variable(&mut self, var: LoadedVariable) {
-        let ndim = var.ndim();
-        // Initialize slice indices to 0 for all dimensions
-        self.slice_indices = vec![0; ndim];
-        // Set display dimensions
-        self.display_dims = if ndim >= 2 {
-            (ndim - 2, ndim - 1)
-        } else {
-            (0, 0)
-        };
-
-        // For 3D+ data, automatically select the first non-display dimension
-        self.active_dim_selector = if ndim > 2 {
-            // Find first dimension that's not being displayed
-            (0..ndim)
-                .find(|&i| i != self.display_dims.0 && i != self.display_dims.1)
-        } else {
-            None
-        };
-
-        self.variable = Some(var);
-        self.table_scroll = (0, 0);
-        self.error = None;
-        self.visible = true;
-    }
-
-    /// Set error state.
-    pub fn set_error(&mut self, error: String) {
-        self.error = Some(error);
-        self.variable = None;
-        self.visible = true;
-    }
-
-    /// Close the overlay.
-    pub fn close(&mut self) {
-        self.visible = false;
-        self.variable = None;
-        self.error = None;
-    }
-
-    /// Toggle view mode.
-    pub fn cycle_view_mode(&mut self) {
-        self.view_mode = self.view_mode.next();
-    }
-
-    /// Cycle to next color palette.
-    pub fn cycle_color_palette(&mut self) {
-        self.color_palette = self.color_palette.next();
-    }
-
-    /// Scroll table up.
-    pub fn scroll_up(&mut self, amount: usize) {
-        self.table_scroll.0 = self.table_scroll.0.saturating_sub(amount);
-    }
-
-    /// Scroll table down.
-    pub fn scroll_down(&mut self, amount: usize) {
-        if let Some(ref var) = self.variable {
-            let max_row = self.get_view_rows(var).saturating_sub(1);
-            self.table_scroll.0 = (self.table_scroll.0 + amount).min(max_row);
-        }
-    }
-
-    /// Scroll table left.
-    pub fn scroll_left(&mut self, amount: usize) {
-        self.table_scroll.1 = self.table_scroll.1.saturating_sub(amount);
-    }
-
-    /// Scroll table right.
-    pub fn scroll_right(&mut self, amount: usize) {
-        if let Some(ref var) = self.variable {
-            let max_col = self.get_view_cols(var).saturating_sub(1);
-            self.table_scroll.1 = (self.table_scroll.1 + amount).min(max_col);
-        }
-    }
-
-    /// Get number of rows for current view.
-    fn get_view_rows(&self, var: &LoadedVariable) -> usize {
-        if var.ndim() == 0 {
-            1
-        } else if var.ndim() == 1 {
-            var.shape[0]
-        } else {
-            var.shape[self.display_dims.0]
-        }
-    }
-
-    /// Get number of columns for current view.
-    fn get_view_cols(&self, var: &LoadedVariable) -> usize {
-        if var.ndim() <= 1 {
-            1
-        } else {
-            var.shape[self.display_dims.1]
-        }
-    }
-
-    /// Navigate to next slice index for a dimension.
-    pub fn next_slice(&mut self, dim: usize) {
-        if let Some(ref var) = self.variable {
-            if dim < var.ndim() && dim != self.display_dims.0 && dim != self.display_dims.1 {
-                let max = var.shape[dim].saturating_sub(1);
-                self.slice_indices[dim] = (self.slice_indices[dim] + 1).min(max);
-            }
-        }
-    }
-
-    /// Navigate to previous slice index for a dimension.
-    pub fn prev_slice(&mut self, dim: usize) {
-        if dim < self.slice_indices.len() {
-            self.slice_indices[dim] = self.slice_indices[dim].saturating_sub(1);
-        }
-    }
-
-    /// Select next dimension selector.
-    pub fn next_dim_selector(&mut self) {
-        if let Some(ref var) = self.variable {
-            let ndim = var.ndim();
-            if ndim > 2 {
-                match self.active_dim_selector {
-                    None => {
-                        // Find first non-display dimension
-                        for i in 0..ndim {
-                            if i != self.display_dims.0 && i != self.display_dims.1 {
-                                self.active_dim_selector = Some(i);
-                                break;
-                            }
-                        }
-                    }
-                    Some(current) => {
-                        // Find next non-display dimension
-                        let mut found_current = false;
-                        let mut next = None;
-                        for i in 0..ndim {
-                            if i == current {
-                                found_current = true;
-                            } else if found_current
-                                && i != self.display_dims.0
-                                && i != self.display_dims.1
-                            {
-                                next = Some(i);
-                                break;
-                            }
-                        }
-                        self.active_dim_selector = next;
-                    }
-                }
-            }
-        }
-    }
-
-    /// Increment value for active dimension selector.
-    pub fn increment_active_slice(&mut self) {
-        if let Some(dim) = self.active_dim_selector {
-            self.next_slice(dim);
-        }
-    }
-
-    /// Decrement value for active dimension selector.
-    pub fn decrement_active_slice(&mut self) {
-        if let Some(dim) = self.active_dim_selector {
-            self.prev_slice(dim);
-        }
-    }
-
-    /// Rotate display dimensions forward (swap Y and X axes).
-    pub fn rotate_display_dims(&mut self) {
-        if let Some(ref var) = self.variable {
-            let ndim = var.ndim();
-            if ndim >= 2 {
-                // Swap the two display dimensions
-                let temp = self.display_dims.0;
-                self.display_dims.0 = self.display_dims.1;
-                self.display_dims.1 = temp;
-            }
-        }
-    }
-
-    /// Cycle through available dimensions for display.
-    pub fn cycle_display_dim(&mut self, which: usize) {
-        if let Some(ref var) = self.variable {
-            let ndim = var.ndim();
-            if ndim < 2 {
-                return;
-            }
-
-            // Get current dimension
-            let current = if which == 0 {
-                self.display_dims.0
-            } else {
-                self.display_dims.1
-            };
-
-            // Find next available dimension (wrap around)
-            let mut next = (current + 1) % ndim;
-
-            // Skip if it would duplicate the other display dimension
-            let other = if which == 0 {
-                self.display_dims.1
-            } else {
-                self.display_dims.0
-            };
-
-            // If next equals other, skip to the one after
-            if next == other {
-                next = (next + 1) % ndim;
-            }
-
-            // Update display dimension
-            if which == 0 {
-                self.display_dims.0 = next;
-            } else {
-                self.display_dims.1 = next;
-            }
-
-            // Update active selector if it's now a display dimension
-            if let Some(active) = self.active_dim_selector {
-                if active == next {
-                    // Find a new active dimension
-                    self.active_dim_selector = (0..ndim)
-                        .find(|&i| i != self.display_dims.0 && i != self.display_dims.1);
-                }
-            }
-        }
-    }
-}
-
 /// Draw the data overlay.
 pub fn draw_overlay(f: &mut Frame<'_>, state: &OverlayState, colors: &ThemeColors) {
     if !state.visible {
@@ -540,9 +75,9 @@ pub fn draw_overlay(f: &mut Frame<'_>, state: &OverlayState, colors: &ThemeColor
         // Draw dimension selectors for 3D+ data
         if has_selectors {
             draw_dimension_selectors(f, chunks[2], state, var, colors);
-            draw_footer(f, chunks[3], colors);
+            draw_footer(f, chunks[3], state, colors);
         } else {
-            draw_footer(f, chunks[2], colors);
+            draw_footer(f, chunks[2], state, colors);
         }
     }
 }
@@ -602,9 +137,10 @@ fn draw_table_view(
     let col_width = 12;
     let visible_cols = ((area.width as usize).saturating_sub(6) / col_width).max(1).min(20); // Limit to 20 cols
 
-    let (start_row, start_col) = state.table_scroll;
-    let total_rows = state.get_view_rows(var);
-    let total_cols = state.get_view_cols(var);
+    let start_row = state.scroll.row;
+    let start_col = state.scroll.col;
+    let total_rows = get_view_rows(state, var);
+    let total_cols = get_view_cols(state, var);
 
     // Get data slice efficiently - avoid repeated get_value calls
     let data_slice = if var.ndim() == 0 {
@@ -614,7 +150,7 @@ fn draw_table_view(
         vec![data]
     } else {
         // Get 2D slice once - much faster than repeated get_value calls
-        var.get_2d_slice(state.display_dims.0, state.display_dims.1, &state.slice_indices)
+        var.get_2d_slice(state.slicing.display_dims.0, state.slicing.display_dims.1, &state.slicing.slice_indices)
     };
 
     // Build table rows from the slice
@@ -696,14 +232,18 @@ fn draw_plot1d_view(
     var: &LoadedVariable,
     colors: &ThemeColors,
 ) {
-    // For 1D plot, always use the last dimension regardless of display_dims
-    // This makes sense: X = index, Y = value
-    let slice_dim = var.ndim().saturating_sub(1);
+    // For 1D plot, use display_dims.0 as the dimension to plot
+    // This allows the user to choose which dimension to visualize
+    let slice_dim = if var.ndim() <= 1 {
+        0
+    } else {
+        state.slicing.display_dims.0
+    };
 
     let data = if var.ndim() <= 1 {
         var.data.to_f64()
     } else {
-        var.get_1d_slice(slice_dim, &state.slice_indices)
+        var.get_1d_slice(slice_dim, &state.slicing.slice_indices)
     };
 
     if data.is_empty() {
@@ -759,7 +299,7 @@ fn draw_plot1d_view(
             .filter(|&i| i != slice_dim)
             .map(|i| {
                 let dim_name = var.dim_names.get(i).map(|s| s.as_str()).unwrap_or("?");
-                let idx = state.slice_indices.get(i).copied().unwrap_or(0);
+                let idx = state.slicing.slice_indices.get(i).copied().unwrap_or(0);
                 format!("{}={}", dim_name, idx)
             })
             .collect();
@@ -832,9 +372,9 @@ fn draw_heatmap_view(
 
     // Get 2D slice
     let data_2d = var.get_2d_slice(
-        state.display_dims.0,
-        state.display_dims.1,
-        &state.slice_indices,
+        state.slicing.display_dims.0,
+        state.slicing.display_dims.1,
+        &state.slicing.slice_indices,
     );
 
     if data_2d.is_empty() || data_2d[0].is_empty() {
@@ -865,12 +405,12 @@ fn draw_heatmap_view(
 
     let dim1_name = var
         .dim_names
-        .get(state.display_dims.0)
+        .get(state.slicing.display_dims.0)
         .map(|s| s.as_str())
         .unwrap_or("dim0");
     let dim2_name = var
         .dim_names
-        .get(state.display_dims.1)
+        .get(state.slicing.display_dims.1)
         .map(|s| s.as_str())
         .unwrap_or("dim1");
 
@@ -1002,24 +542,38 @@ fn draw_dimension_selectors(
 ) {
     let mut lines = Vec::new();
 
-    // First line: Display dimensions
+    // First line: Display dimensions (different for 1D vs 2D/Heatmap)
     let mut display_spans = vec![
         Span::styled("Display: ", Style::default().fg(colors.green)),
     ];
 
-    let dim1_name = var.dim_names.get(state.display_dims.0).map(|s| s.as_str()).unwrap_or("?");
-    let dim2_name = var.dim_names.get(state.display_dims.1).map(|s| s.as_str()).unwrap_or("?");
-    let dim1_size = var.shape.get(state.display_dims.0).copied().unwrap_or(0);
-    let dim2_size = var.shape.get(state.display_dims.1).copied().unwrap_or(0);
+    match state.view_mode {
+        ViewMode::Plot1D => {
+            // 1D plot only shows one dimension
+            let dim_name = var.dim_names.get(state.slicing.display_dims.0).map(|s| s.as_str()).unwrap_or("?");
+            let dim_size = var.shape.get(state.slicing.display_dims.0).copied().unwrap_or(0);
+            display_spans.push(Span::styled(
+                format!("{}[{}]", dim_name, dim_size),
+                Style::default().fg(colors.aqua),
+            ));
+        }
+        ViewMode::Table | ViewMode::Heatmap => {
+            // 2D views show both dimensions
+            let dim1_name = var.dim_names.get(state.slicing.display_dims.0).map(|s| s.as_str()).unwrap_or("?");
+            let dim2_name = var.dim_names.get(state.slicing.display_dims.1).map(|s| s.as_str()).unwrap_or("?");
+            let dim1_size = var.shape.get(state.slicing.display_dims.0).copied().unwrap_or(0);
+            let dim2_size = var.shape.get(state.slicing.display_dims.1).copied().unwrap_or(0);
 
-    display_spans.push(Span::styled(
-        format!("Y: {}[{}] ", dim1_name, dim1_size),
-        Style::default().fg(colors.aqua),
-    ));
-    display_spans.push(Span::styled(
-        format!("X: {}[{}]", dim2_name, dim2_size),
-        Style::default().fg(colors.aqua),
-    ));
+            display_spans.push(Span::styled(
+                format!("Y: {}[{}] ", dim1_name, dim1_size),
+                Style::default().fg(colors.aqua),
+            ));
+            display_spans.push(Span::styled(
+                format!("X: {}[{}]", dim2_name, dim2_size),
+                Style::default().fg(colors.aqua),
+            ));
+        }
+    }
 
     lines.push(Line::from(display_spans));
 
@@ -1028,18 +582,35 @@ fn draw_dimension_selectors(
         Span::styled("Slices: ", Style::default().fg(colors.green)),
     ];
 
+    // For 1D plots, only display_dims.0 is used, so we can slice display_dims.1 too
+    let is_1d = matches!(state.view_mode, ViewMode::Plot1D);
+
     let has_slices = var.dim_names.iter().zip(var.shape.iter()).enumerate()
-        .any(|(i, _)| i != state.display_dims.0 && i != state.display_dims.1);
+        .any(|(i, _)| {
+            if is_1d {
+                i != state.slicing.display_dims.0
+            } else {
+                i != state.slicing.display_dims.0 && i != state.slicing.display_dims.1
+            }
+        });
 
     if has_slices {
         for (i, (dim_name, &size)) in var.dim_names.iter().zip(var.shape.iter()).enumerate() {
             // Skip display dimensions
-            if i == state.display_dims.0 || i == state.display_dims.1 {
+            // For 1D: only skip display_dims.0
+            // For 2D/Heatmap: skip both display_dims.0 and display_dims.1
+            let should_skip = if is_1d {
+                i == state.slicing.display_dims.0
+            } else {
+                i == state.slicing.display_dims.0 || i == state.slicing.display_dims.1
+            };
+
+            if should_skip {
                 continue;
             }
 
-            let is_active = state.active_dim_selector == Some(i);
-            let idx = state.slice_indices.get(i).copied().unwrap_or(0);
+            let is_active = state.slicing.active_dim_selector == Some(i);
+            let idx = state.slicing.slice_indices.get(i).copied().unwrap_or(0);
 
             let style = if is_active {
                 Style::default()
@@ -1075,8 +646,11 @@ fn draw_dimension_selectors(
     f.render_widget(paragraph, area);
 }
 
-fn draw_footer(f: &mut Frame<'_>, area: Rect, colors: &ThemeColors) {
-    let help = "Tab: View | C: Palette | R: Rotate | Y/X: Change Dims | Shift+Tab: Slice Dim | PgUp/PgDn: Slice | Esc: Close";
+fn draw_footer(f: &mut Frame<'_>, area: Rect, state: &OverlayState, colors: &ThemeColors) {
+    let help = match state.view_mode {
+        ViewMode::Plot1D => "Tab: View | C: Palette | Y: Change Dim | S: Slice Dim | PgUp/PgDn: Slice | Esc: Close",
+        ViewMode::Table | ViewMode::Heatmap => "Tab: View | C: Palette | R: Rotate | Y/X: Change Dims | S: Slice Dim | PgUp/PgDn: Slice | Esc: Close",
+    };
     let paragraph = Paragraph::new(help)
         .style(Style::default().fg(colors.green))
         .alignment(Alignment::Center);
@@ -1137,4 +711,24 @@ fn centered_rect(percent_x: u16, percent_y: u16, r: Rect) -> Rect {
             Constraint::Percentage((100 - percent_x) / 2),
         ])
         .split(popup_layout[1])[1]
+}
+
+/// Get number of rows for current view (helper for rendering).
+fn get_view_rows(state: &OverlayState, var: &LoadedVariable) -> usize {
+    if var.ndim() == 0 {
+        1
+    } else if var.ndim() == 1 {
+        var.shape[0]
+    } else {
+        var.shape[state.slicing.display_dims.0]
+    }
+}
+
+/// Get number of columns for current view (helper for rendering).
+fn get_view_cols(state: &OverlayState, var: &LoadedVariable) -> usize {
+    if var.ndim() <= 1 {
+        1
+    } else {
+        var.shape[state.slicing.display_dims.1]
+    }
 }
