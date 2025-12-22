@@ -146,17 +146,37 @@ impl App {
                 .unwrap_or_else(|| "file".to_string())
         );
 
-        match DataReader::read_file(&path) {
+        // Canonicalize the path to get absolute path (handles relative paths correctly)
+        let canonical_path = match fs::canonicalize(&path) {
+            Ok(p) => p,
+            Err(e) => {
+                self.error_message = Some(format!("Failed to resolve path: {}", e));
+                self.status = "Error resolving file path".to_string();
+                self.loading = false;
+                return;
+            }
+        };
+
+        match DataReader::read_file(&canonical_path) {
             Ok(dataset) => {
                 self.dataset = Some(dataset.clone());
                 self.tree_cursor.build_from_dataset(&dataset);
                 self.status = format!(
                     "{} loaded",
-                    path.file_name()
+                    canonical_path.file_name()
                         .map(|n| n.to_string_lossy().to_string())
                         .unwrap_or_else(|| "file".to_string())
                 );
                 self.error_message = None;
+
+                // Update file_path with canonical (absolute) path so preview and other features work
+                self.file_path = Some(canonical_path.clone());
+
+                // Update current_dir to the file's directory for consistent file browser behavior
+                if let Some(parent) = canonical_path.parent() {
+                    self.current_dir = parent.to_path_buf();
+                }
+
                 tracing::info!("File loaded successfully");
             },
             Err(e) => {

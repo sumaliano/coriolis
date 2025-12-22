@@ -757,29 +757,33 @@ fn draw_heatmap_view(
         }
     }
 
-    // Render dense heatmap with preserved aspect ratio
+    // Render dense heatmap with uniform scaling
+    // Uses the same scale factor for both dimensions so the heatmap looks
+    // identical in any orientation (just rotated, not stretched)
     let max_h = heatmap_area.height as usize;
     let max_w_chars = heatmap_area.width as usize;
     let pixel_width = 2;
     let max_w = max_w_chars / pixel_width;
     if max_h == 0 || max_w == 0 { return; }
 
-    let data_aspect = (cols as f64) / (rows as f64);
-    let display_aspect = (max_w as f64) / (max_h as f64);
-    let (disp_rows, disp_cols) = if display_aspect > data_aspect {
-        let cols_fit = ((max_h as f64) * data_aspect).floor().max(1.0) as usize;
-        (max_h, cols_fit)
-    } else {
-        let rows_fit = ((max_w as f64) / data_aspect).floor().max(1.0) as usize;
-        (rows_fit, max_w)
-    };
+    // Calculate uniform scale factor (same for both dimensions)
+    // This ensures rotating the data just rotates the visual, without distortion
+    let row_scale = (max_h as f64) / (rows as f64);
+    let col_scale = (max_w as f64) / (cols as f64);
+    let scale = row_scale.min(col_scale); // Use minimum to fit within available space
 
-    // Center the drawing area
-    let offset_x_chars = ((max_w - disp_cols) * pixel_width / 2) as u16;
+    // Calculate display dimensions using uniform scale
+    let disp_rows = ((rows as f64) * scale).floor().max(1.0) as usize;
+    let disp_cols = ((cols as f64) * scale).floor().max(1.0) as usize;
+
+    // Center the heatmap in the available space
+    let offset_x_chars = (((max_w - disp_cols) * pixel_width) / 2) as u16;
     let offset_y = ((max_h - disp_rows) / 2) as u16;
 
-    let row_step = (rows as f64) / (disp_rows as f64);
-    let col_step = (cols as f64) / (disp_cols as f64);
+    // Use uniform step size for both dimensions
+    let step = 1.0 / scale;
+    let row_step = step;
+    let col_step = step;
 
     for y in 0..disp_rows {
         let row_idx = (y as f64 * row_step).floor() as usize;
