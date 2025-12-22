@@ -1,77 +1,128 @@
 # Coriolis 🦀
 
-A fast, terminal-based netCDF/HDF5 data viewer with vim-style navigation.
+A fast, terminal-based NetCDF data explorer and viewer with vim-style navigation.
 
-*Named after the Coriolis effect - fundamental in understanding Earth's atmospheric and oceanic circulation patterns.*
+(Named after the Coriolis effect — fundamental in understanding Earth's atmospheric and oceanic circulation.)
 
-## Quick Start
+Note: This application reads NetCDF files (classic and NetCDF‑4/HDF5‑backed). It does not provide generic HDF5 browsing beyond the NetCDF common data model.
 
-### 1. Install Rust
+## Overview
+
+Coriolis lets you quickly explore NetCDF datasets from the terminal:
+- Browse dataset structure (groups, dimensions, variables, attributes)
+- View variable metadata and previews
+- Open an interactive data viewer overlay with multiple modes: table, 1D plot, and heatmap
+- Slice multi-dimensional arrays and navigate with familiar vim keys
+
+## Stack
+
+- Language: Rust (edition 2021, Rust ≥ 1.70)
+- TUI framework: `ratatui` + `crossterm`
+- Data access: `netcdf` crate (with optional static linking)
+- Arrays: `ndarray`
+- CLI: `clap`
+- Logging: `tracing` + `tracing-subscriber`
+
+Package manager and build tool: Cargo
+
+Binary entry point: `src/main.rs` (bin name `coriolis`)
+
+## Requirements
+
+Base (all platforms):
+- Rust toolchain (rustup) — Rust 1.70 or newer
+
+For Linux static build (recommended for portability):
+- musl tools: `musl-gcc` (package `musl-tools` on Debian/Ubuntu)
+- Rust MUSL target: `x86_64-unknown-linux-musl`
+
+Optional tooling:
+- `cargo-watch` for `make watch`
+
+## Installation and Setup
+
+Install Rust using rustup:
 
 ```bash
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
-source $HOME/.cargo/env
+source "$HOME/.cargo/env"
 ```
 
-### 2. Build
+Clone and build:
 
-**Using Makefile (easy):**
 ```bash
+git clone <this-repo>
 cd coriolis
-make static          # Build portable binary (recommended)
-sudo make install-static  # Install to /usr/local/bin
+make release    # or: cargo build --release
 ```
 
-**Or using cargo directly:**
+Install system-wide (optional, requires sudo):
+
+```bash
+sudo make install           # install target/release/coriolis
+sudo make install-static    # after `make static`, installs the static binary
+```
+
+## Build and Run
+
+Using Makefile (recommended shortcuts):
+
+```bash
+make build          # dev build
+make release        # optimized build
+make static         # fully static Linux binary (portable)
+```
+
+Using Cargo directly:
+
 ```bash
 cargo build --release
-./target/release/coriolis your_file.nc
+./target/release/coriolis path/to/file.nc
 ```
 
-### 3. Run
+Run with a file or directory (directory opens the file browser):
 
 ```bash
-coriolis your_file.nc
+coriolis path/to/file_or_directory
 ```
 
-## Why "Coriolis"?
+CLI options:
 
-The Coriolis effect is crucial in atmospheric and oceanic sciences – the same fields that heavily use NetCDF and HDF5 formats for data storage. It fits for a tool that helps visualize scientific data!
+```text
+USAGE: coriolis [FILE_OR_DIR] [--log PATH]
 
-## Building Options
+ARGS:
+  FILE_OR_DIR         Optional path to a NetCDF file or directory to start in
 
-### Static Binary (Recommended for Linux)
-
-Creates a single portable executable with **zero dependencies**:
-
-```bash
-make static
-```
-
-This produces a ~15MB binary at `target/x86_64-unknown-linux-musl/release/coriolis` that runs on **any Linux system** - no libraries needed!
-
-### Standard Build
-
-```bash
-make release        # Optimized build
-make build          # Development build (faster, includes debug info)
+OPTIONS:
+  --log <PATH>        Enable logging to the given file
 ```
 
 ## Makefile Targets
 
 ```bash
-make static         # Build portable static binary
-make release        # Build optimized binary
-make test           # Run tests
-make clippy         # Run linter
-make fmt            # Format code
-make clean          # Remove build artifacts
-make install        # Install to /usr/local/bin
-make uninstall      # Remove from /usr/local/bin
-make run FILE=data.nc  # Run with file
-make check          # Run all quality checks
-make help           # Show all targets
+make build            # Development build (fast)
+make release          # Production build (optimized)
+make static           # Build static Linux binary via MUSL
+make test             # Run tests
+make test-verbose     # Run tests with output
+make fmt              # Format code
+make fmt-check        # Check formatting
+make clippy           # Lints with warnings as errors
+make doc              # Build docs
+make clean            # Remove build artifacts
+make install          # Install release binary to /usr/local/bin
+make install-static   # Install static binary to /usr/local/bin
+make uninstall        # Remove installed binary
+make run FILE=data.nc # Run with a file
+make run-dev FILE=... # Run dev build with a file
+make check            # fmt-check + clippy + test + build
+make watch            # Rebuild on changes (needs cargo-watch)
+make help             # Show this summary
 ```
+
+Helper script:
+- `build.sh`: cross‑platform convenience script for producing portable binaries. On Linux it builds a fully static MUSL binary; on macOS it builds a standard release.
 
 ## Keyboard Shortcuts
 
@@ -108,283 +159,87 @@ make help           # Show all targets
 
 ## Features
 
-- 🚀 Fast NetCDF and HDF5 reading
-- 🌲 Tree-based navigation
-- 🔍 Powerful search
+- 🚀 Fast NetCDF reading (classic + NetCDF‑4/HDF5‑backed)
+- 🌲 Tree-based navigation of groups, variables, dimensions, attributes
+- 🔍 Search within the tree
 - ⌨️ Vim-style shortcuts
-- 🎨 Gruvbox themes
-- 📦 Single portable binary
-- 💾 Low memory (~90MB)
-- 🔒 Zero runtime dependencies (static build)
-- 📊 Interactive data viewer with table, 1D plot, and heatmap views
-- 🧊 Multi-dimensional data slicing for 3D+ arrays
+- 🎨 Gruvbox light/dark themes
+- 📦 Single portable static binary on Linux (no runtime deps)
+- 💾 Low memory usage
+- 📊 Interactive data viewer: table, 1D plot, heatmap
+- 🧊 Multi-dimensional slicing for 3D+ arrays
 
-## Architecture
-
-Coriolis follows a clean separation between **state management** and **presentation**.
-
-### Module Overview
+## Project Structure
 
 ```
 src/
-├── main.rs              # Entry point, event loop, keyboard handling
-├── app.rs               # Application state and business logic
-├── data/                # Data structures and NetCDF reading
-│   ├── node.rs          # Tree node types (Root, Group, Variable, Dimension)
-│   ├── reader.rs        # NetCDF file parsing
-│   ├── variable_data.rs # Variable data loading and slicing
-│   └── dataset.rs       # Dataset wrapper
-├── navigation/          # Navigation state management
-│   ├── tree.rs          # Tree cursor and visibility logic
-│   └── search.rs        # Search functionality
-├── ui/                  # Pure rendering functions
-│   ├── browser.rs       # Main browser UI
-│   ├── overlay.rs       # Data viewer overlay (table/plot/heatmap)
-│   └── theme.rs         # Color schemes
-└── util/                # Utilities (clipboard, etc.)
+├── main.rs            # Entry point, terminal event loop & key handling
+├── lib.rs             # Module exports
+├── app.rs             # Application state & business logic
+├── data/              # NetCDF reading and dataset representation
+│   ├── dataset.rs     # Dataset metadata wrapper
+│   ├── node.rs        # Tree node types (root/group/var/dim/attr)
+│   ├── reader.rs      # File reading utilities
+│   └── variable_data.rs # Variable data loading & slicing
+├── navigation/        # Navigation and search state
+│   ├── tree.rs        # Tree cursor & visibility
+│   └── search.rs      # Search logic
+├── overlay/           # Data viewer overlay (state + UI helpers)
+│   └── ui.rs          # Overlay rendering primitives
+├── ui/                # Common UI components & theming
+│   ├── browser.rs     # Main browser view
+│   └── theme.rs       # Themes and colors
+└── util/              # Utilities (clipboard, colormaps, layout, etc.)
 ```
 
-### App vs UI: The Separation
+## Environment Variables
 
-**`app.rs` (State & Logic):**
-- Owns all application state (`App` struct)
-- Handles business logic and state mutations
-- Manages file loading, data reading, navigation state
-- **Never renders anything** - just manages data
+No required environment variables.
 
-```rust
-pub struct App {
-    file_path: Option<PathBuf>,      // What file is open?
-    dataset: Option<DatasetInfo>,    // Parsed file structure
-    tree_cursor: TreeState,          // Where in the tree are we?
-    search: SearchState,             // Search state
-    overlay: OverlayState,           // Data viewer state
-    theme: Theme,                    // Current theme
-    // ... etc
-}
+Optional:
+- `PKG_CONFIG_ALL_STATIC=1` — used by static builds to prefer static libraries (already set in Makefile/build.sh for MUSL builds).
 
-impl App {
-    pub fn toggle_preview(&mut self) { ... }  // Business logic
-    pub fn load_file(&mut self, path: PathBuf) { ... }
-    pub fn toggle_plot(&mut self) { ... }
-}
-```
+## Tests
 
-**`ui/` (Presentation):**
-- Pure rendering functions that take state and draw UI
-- **Never modifies state** - just reads it
-- Each module renders a specific part of the UI
-
-```rust
-// ui/browser.rs
-pub fn draw_browser(f: &mut Frame, app: &App) {
-    // Read app state, render UI
-    let colors = ThemeColors::from_theme(&app.theme);
-    draw_tree(f, app, area, &colors);
-    draw_details(f, app, area, &colors);
-    // ...
-}
-
-// ui/overlay.rs
-pub fn draw_overlay(f: &mut Frame, state: &OverlayState, colors: &ThemeColors) {
-    // Read overlay state, render data viewer
-    match state.view_mode {
-        ViewMode::Table => draw_table_view(...),
-        ViewMode::Plot1D => draw_plot1d_view(...),
-        ViewMode::Heatmap => draw_heatmap_view(...),
-    }
-}
-```
-
-### Data Flow
-
-```
-User Input (main.rs)
-    │
-    ├─→ Keyboard Event
-    │       │
-    │       ├─→ Modify App State (app.rs methods)
-    │       │       │
-    │       │       ├─→ Update TreeState (navigation/tree.rs)
-    │       │       ├─→ Update SearchState (navigation/search.rs)
-    │       │       └─→ Update OverlayState (ui/overlay.rs)
-    │       │
-    │       └─→ Trigger Redraw
-    │
-    └─→ Render Loop (60 FPS)
-            │
-            └─→ ui::draw(frame, &app)
-                    │
-                    ├─→ ui/browser.rs reads app state
-                    └─→ ui/overlay.rs reads app.overlay state
-```
-
-### Key Design Principles
-
-1. **Unidirectional Data Flow**: Input → State Update → Render
-2. **Pure Rendering**: UI functions never mutate state
-3. **State Encapsulation**: Each module owns its state (TreeState, SearchState, OverlayState)
-4. **No Business Logic in UI**: UI code only knows how to draw, not what to do
-
-### Example: Opening the Data Viewer
-
-```rust
-// 1. User presses 'p' (main.rs)
-KeyCode::Char('p') => {
-    app.toggle_plot();  // State mutation
-}
-
-// 2. App modifies state (app.rs)
-pub fn toggle_plot(&mut self) {
-    let node = self.current_node()?;
-    let data = read_variable(&self.file_path, &node.path)?;
-    self.overlay.load_variable(data);  // Update overlay state
-}
-
-// 3. Next render cycle (ui/overlay.rs)
-pub fn draw_overlay(f: &mut Frame, state: &OverlayState, ...) {
-    if !state.visible { return; }
-    // Read state.variable and render table/plot/heatmap
-}
-```
-
-### State Structures
-
-**TreeState** (navigation/tree.rs):
-- Flat list of visible tree items
-- Cursor position (index into visible items)
-- Set of expanded node paths
-- Rebuilds on expand/collapse for correctness
-
-**SearchState** (navigation/search.rs):
-- Search buffer and submitted query
-- List of match paths
-- Current match index
-
-**OverlayState** (ui/overlay.rs):
-- Loaded variable data (LoadedVariable)
-- View mode (Table/Plot1D/Heatmap)
-- Scroll position
-- Dimension slice indices (for 3D+ data)
-
-## Musl vs Glibc
-
-When building with `make static`, we use **musl libc** instead of **glibc**:
-
-### Why Musl?
-
-| Feature | glibc | musl |
-|---------|-------|------|
-| **Portability** | Requires specific glibc version | Fully static, runs anywhere |
-| **Binary size** | Larger | Smaller |
-| **Dependencies** | Many shared libraries | Zero (fully static) |
-| **Startup time** | Slower | Faster |
-| **Memory usage** | Higher | Lower |
-| **Security** | Complex codebase | Minimal, auditable |
-
-### Practical Benefits
-
-**With glibc (standard build):**
-```bash
-$ ldd target/release/coriolis
-    linux-vdso.so.1
-    libnetcdf.so.19 => /usr/lib/libnetcdf.so.19
-    libhdf5.so.103 => /usr/lib/libhdf5.so.103
-    libc.so.6 => /lib/x86_64-linux-gnu/libc.so.6
-    ... (15+ more libraries)
-```
-
-**With musl (static build):**
-```bash
-$ ldd target/x86_64-unknown-linux-musl/release/coriolis
-    not a dynamic executable
-```
-
-✨ **Single file, runs everywhere!**
-
-### When to Use Each
-
-**Use musl (`make static`):**
-- ✅ Deploying to multiple systems
-- ✅ Don't want to deal with dependencies
-- ✅ Creating portable binaries
-- ✅ Container/Docker deployments
-- ✅ Older Linux systems
-
-**Use glibc (`make release`):**
-- ✅ Quick local development
-- ✅ Your system already has dependencies
-- ✅ Faster compilation (5 min vs 15 min)
-
-## Supported Formats
-
-- NetCDF (.nc, .nc4, .netcdf)
-- HDF5 (.h5, .hdf5, .he5)
-
-## Command Line Options
+Run all tests:
 
 ```bash
-coriolis data.nc                    # Basic usage
-coriolis --log-level debug data.nc  # With debug logging
-coriolis --help                     # Show help
+cargo test
+# or
+make test
 ```
 
-## Installation
-
-### From Source (Recommended)
+Show test output:
 
 ```bash
-# Build static binary
-make static
-
-# Install (requires sudo)
-sudo make install-static
-
-# Now run from anywhere
-coriolis data.nc
+make test-verbose
 ```
-
-### Manual Installation
-
-```bash
-# Build
-cargo build --release --target x86_64-unknown-linux-musl
-
-# Copy to PATH
-sudo cp target/x86_64-unknown-linux-musl/release/coriolis /usr/local/bin/
-
-# Done!
-coriolis data.nc
-```
-
-## Troubleshooting
-
-**"musl-tools not found"**
-```bash
-sudo apt-get install musl-tools
-```
-
-**"cargo: command not found"**
-```bash
-curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
-```
-
-**Build is slow**
-- First build takes 10-15 minutes (compiling C libraries)
-- Subsequent builds are much faster (~30 seconds)
-- Use `make build` for quick dev builds
 
 ## Development
 
-```bash
-make build          # Quick development build
-make test           # Run tests
-make clippy         # Lint code
-make fmt            # Format code
-make check          # Run all checks
-make doc            # Generate documentation
-```
+- Lint: `make clippy`
+- Format: `make fmt` / `make fmt-check`
+- Docs: `make doc`
+- Auto-rebuild on changes: `make watch` (requires `cargo install cargo-watch`)
+
+## Supported Platforms
+
+- Linux: first-class (including fully static portable binary via MUSL)
+- macOS: standard Cargo builds work
+- Windows: standard Cargo builds should work in a proper terminal; for static cross‑compile, use the guidance in `build.sh` (requires mingw toolchain)
 
 ## License
 
-MIT
+Licensed under the MIT License (see `Cargo.toml`).
+
+TODO: Add a `LICENSE` file to the repository root if missing.
+
+## Why "Coriolis"?
+
+The Coriolis effect is crucial in atmospheric and oceanic sciences — fields that commonly use NetCDF for data storage — fitting for a tool that helps visualize scientific data.
+
+## Notes and TODOs
+
+- TODO: Document any additional CLI flags if introduced in the future.
+- TODO: Attach prebuilt release binaries (Linux/macOS/Windows) to GitHub Releases.
+- TODO: Expand documentation for very large datasets and performance tips.
