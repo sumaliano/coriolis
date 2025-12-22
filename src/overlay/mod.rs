@@ -119,6 +119,14 @@ pub struct OverlayState {
     pub error: Option<String>,
     /// Status message to display inside overlay.
     pub status_message: Option<String>,
+    /// 1D plot cursor index (for probe/readout).
+    pub plot_cursor: usize,
+    /// 2D heatmap crosshair row.
+    pub heat_cursor_row: usize,
+    /// 2D heatmap crosshair column.
+    pub heat_cursor_col: usize,
+    /// Whether to apply scale/offset (CF convention). True = scaled, False = raw.
+    pub apply_scale_offset: bool,
 }
 
 impl Default for OverlayState {
@@ -139,6 +147,10 @@ impl OverlayState {
             visible: false,
             error: None,
             status_message: None,
+            plot_cursor: 0,
+            heat_cursor_row: 0,
+            heat_cursor_col: 0,
+            apply_scale_offset: true,
         }
     }
 
@@ -162,11 +174,17 @@ impl OverlayState {
             },
         };
 
+        // Default to scaled data display
+        self.apply_scale_offset = true;
+
         self.variable = Some(var);
         self.scroll = ScrollPosition::default();
         self.error = None;
         self.visible = true;
         self.status_message = None;
+        self.plot_cursor = 0;
+        self.heat_cursor_row = 0;
+        self.heat_cursor_col = 0;
     }
 
     /// Set error state.
@@ -191,6 +209,102 @@ impl OverlayState {
     /// Cycle to next color palette.
     pub fn cycle_color_palette(&mut self) {
         self.color_palette = self.color_palette.next();
+    }
+
+    /// Check if scale/offset is available for this variable.
+    pub fn has_scale_offset(&self) -> bool {
+        self.variable.as_ref().map(|v| v.has_scale_offset()).unwrap_or(false)
+    }
+
+    /// Get scale factor from variable.
+    pub fn scale_factor(&self) -> f64 {
+        self.variable.as_ref().map(|v| v.scale_factor).unwrap_or(1.0)
+    }
+
+    /// Get add offset from variable.
+    pub fn add_offset(&self) -> f64 {
+        self.variable.as_ref().map(|v| v.add_offset).unwrap_or(0.0)
+    }
+
+    /// Toggle between scaled and raw data display.
+    pub fn toggle_scale_offset(&mut self) {
+        if self.has_scale_offset() {
+            self.apply_scale_offset = !self.apply_scale_offset;
+        }
+    }
+
+    /// Move 1D plot cursor left.
+    pub fn plot_cursor_left(&mut self) {
+        if let Some(ref var) = self.variable {
+            let len = if var.ndim() <= 1 { var.shape[0] } else { var.shape[self.slicing.display_dims.0] };
+            if len == 0 { return; }
+            self.plot_cursor = self.plot_cursor.saturating_sub(1);
+            if self.plot_cursor >= len { self.plot_cursor = len - 1; }
+        }
+    }
+
+    /// Move 1D plot cursor right.
+    pub fn plot_cursor_right(&mut self) {
+        if let Some(ref var) = self.variable {
+            let len = if var.ndim() <= 1 { var.shape[0] } else { var.shape[self.slicing.display_dims.0] };
+            if len == 0 { return; }
+            self.plot_cursor = (self.plot_cursor + 1).min(len - 1);
+        }
+    }
+
+    /// Move heatmap crosshair by delta.
+    pub fn move_heat_cursor(&mut self, drow: isize, dcol: isize) {
+        if let Some(ref var) = self.variable {
+            if var.ndim() < 2 { return; }
+            let rows = var.shape[self.slicing.display_dims.0];
+            let cols = var.shape[self.slicing.display_dims.1];
+            let nr = rows as isize;
+            let nc = cols as isize;
+            let mut r = self.heat_cursor_row as isize + drow;
+            let mut c = self.heat_cursor_col as isize + dcol;
+            if r < 0 { r = 0; }
+            if c < 0 { c = 0; }
+            if r >= nr { r = nr - 1; }
+            if c >= nc { c = nc - 1; }
+            self.heat_cursor_row = r as usize;
+            self.heat_cursor_col = c as usize;
+        }
+    }
+
+    /// Copy visible data to clipboard as TSV depending on current view.
+    pub fn copy_visible_to_clipboard(&self) {
+        if let Some(ref var) = self.variable {
+            let mut cb = match arboard::Clipboard::new() { Ok(c) => c, Err(_) => return };
+            let apply_scale = self.apply_scale_offset;
+            match self.view_mode {
+                ViewMode::Plot1D => {
+                    let dim = if var.ndim() <= 1 { 0 } else { self.slicing.display_dims.0 };
+                    let data: Vec<f64> = if var.ndim() <= 1 {
+                        var.data.iter().map(|&v| if apply_scale { var.scale_value(v) } else { v }).collect()
+                    } else {
+                        var.get_1d_slice(dim, &self.slicing.slice_indices, apply_scale)
+                    };
+                    let mut out = String::with_capacity(data.len() * 12);
+                    for (i, v) in data.iter().enumerate() {
+                        out.push_str(&format!("{}\t{}\n", i, v));
+                    }
+                    let _ = cb.set_text(out);
+                }
+                ViewMode::Heatmap | ViewMode::Table => {
+                    let data = var.get_2d_slice(self.slicing.display_dims.0, self.slicing.display_dims.1, &self.slicing.slice_indices, apply_scale);
+                    let mut out = String::new();
+                    for r in 0..data.len() {
+                        let row = &data[r];
+                        for (ci, v) in row.iter().enumerate() {
+                            if ci > 0 { out.push('\t'); }
+                            out.push_str(&format!("{}", v));
+                        }
+                        out.push('\n');
+                    }
+                    let _ = cb.set_text(out);
+                }
+            }
+        }
     }
 
     /// Scroll up.

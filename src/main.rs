@@ -3,6 +3,7 @@
 use anyhow::Result;
 use coriolis::app::App;
 use coriolis::ui;
+use coriolis::overlay::ViewMode;
 use coriolis::util;
 use clap::Parser;
 use crossterm::{
@@ -116,22 +117,39 @@ fn run_app<B: ratatui::backend::Backend>(terminal: &mut Terminal<B>, mut app: Ap
                             let palette_name = app.overlay.color_palette.name();
                             app.overlay.set_status(format!("Palette: {}", palette_name));
                         }
-                        // Pan with hjkl or arrows
+                        // Contextual arrows/hjkl
+                        // Table: pan; Plot1D: move cursor; Heatmap: move crosshair
                         (KeyModifiers::NONE, KeyCode::Up)
                         | (KeyModifiers::NONE, KeyCode::Char('k')) => {
-                            app.overlay.scroll_up(1);
+                            match app.overlay.view_mode {
+                                ViewMode::Table => app.overlay.scroll_up(1),
+                                ViewMode::Heatmap => app.overlay.move_heat_cursor(-1, 0),
+                                ViewMode::Plot1D => {/* reserved for future y-zoom */}
+                            }
                         }
                         (KeyModifiers::NONE, KeyCode::Down)
                         | (KeyModifiers::NONE, KeyCode::Char('j')) => {
-                            app.overlay.scroll_down(1);
+                            match app.overlay.view_mode {
+                                ViewMode::Table => app.overlay.scroll_down(1),
+                                ViewMode::Heatmap => app.overlay.move_heat_cursor(1, 0),
+                                ViewMode::Plot1D => {/* reserved for future y-zoom */}
+                            }
                         }
                         (KeyModifiers::NONE, KeyCode::Left)
                         | (KeyModifiers::NONE, KeyCode::Char('h')) => {
-                            app.overlay.scroll_left(1);
+                            match app.overlay.view_mode {
+                                ViewMode::Table => app.overlay.scroll_left(1),
+                                ViewMode::Heatmap => app.overlay.move_heat_cursor(0, -1),
+                                ViewMode::Plot1D => app.overlay.plot_cursor_left(),
+                            }
                         }
                         (KeyModifiers::NONE, KeyCode::Right)
                         | (KeyModifiers::NONE, KeyCode::Char('l')) => {
-                            app.overlay.scroll_right(1);
+                            match app.overlay.view_mode {
+                                ViewMode::Table => app.overlay.scroll_right(1),
+                                ViewMode::Heatmap => app.overlay.move_heat_cursor(0, 1),
+                                ViewMode::Plot1D => app.overlay.plot_cursor_right(),
+                            }
                         }
                         // Page up/down for large scrolling
                         (KeyModifiers::CONTROL, KeyCode::Char('u')) => {
@@ -183,6 +201,12 @@ fn run_app<B: ratatui::backend::Backend>(terminal: &mut Terminal<B>, mut app: Ap
                             app.overlay.rotate_display_dims();
                             app.overlay.set_status("Rotated Y ↔ X dimensions".to_string());
                         }
+                        // Simplified UI: removed 1D options (auto/log/agg) and heatmap range/zoom/pan toggles
+                        // Clipboard export remains below
+                        (KeyModifiers::CONTROL, KeyCode::Char('c')) => {
+                            app.overlay.copy_visible_to_clipboard();
+                            app.overlay.set_status("Copied visible data to clipboard (TSV)".to_string());
+                        }
                         (KeyModifiers::NONE, KeyCode::Char('y'))
                         | (KeyModifiers::NONE, KeyCode::Char('Y')) => {
                             app.overlay.cycle_display_dim(0);
@@ -212,6 +236,18 @@ fn run_app<B: ratatui::backend::Backend>(terminal: &mut Terminal<B>, mut app: Ap
                                 "Cycled X dimension".to_string()
                             };
                             app.overlay.set_status(status_msg);
+                        }
+                        // Toggle scale/offset
+                        (KeyModifiers::NONE, KeyCode::Char('o'))
+                        | (KeyModifiers::NONE, KeyCode::Char('O')) => {
+                            if app.overlay.has_scale_offset() {
+                                app.overlay.toggle_scale_offset();
+                                let mode = if app.overlay.apply_scale_offset { "Scaled" } else { "Raw" };
+                                app.overlay.set_status(format!("Data: {} (scale={}, offset={})",
+                                    mode, app.overlay.scale_factor(), app.overlay.add_offset()));
+                            } else {
+                                app.overlay.set_status("No scale/offset for this variable".to_string());
+                            }
                         }
                         _ => {}
                     }
@@ -352,6 +388,9 @@ fn run_app<B: ratatui::backend::Backend>(terminal: &mut Terminal<B>, mut app: Ap
                     },
                     (KeyModifiers::NONE, KeyCode::Char('t')) => {
                         app.toggle_preview();
+                    },
+                    (KeyModifiers::NONE, KeyCode::Char('f')) => {
+                        app.open_file_browser_at_current();
                     },
                     (KeyModifiers::SHIFT, KeyCode::Char('T')) => {
                         app.cycle_theme();

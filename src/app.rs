@@ -343,4 +343,19 @@ impl App {
             self.file_browser_cursor += 1;
         }
     }
+
+    /// Open file browser starting at the current file's directory.
+    pub fn open_file_browser_at_current(&mut self) {
+        // Get the directory of the current file, or use current working directory
+        let start_dir = self.file_path
+            .as_ref()
+            .and_then(|p| p.parent())
+            .map(|p| p.to_path_buf())
+            .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")));
+
+        self.current_dir = start_dir;
+        self.load_directory();
+        self.file_browser_mode = true;
+        self.status = format!("File browser: {}", self.current_dir.display());
+    }
 }

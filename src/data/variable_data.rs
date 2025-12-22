@@ -7,6 +7,67 @@ use std::path::Path;
 
 // Previous `VariableData` enum removed: we now load directly into `ArrayD<f64>`.
 
+/// Coordinate variable data for a dimension.
+#[derive(Debug, Clone)]
+pub struct CoordinateVar {
+    /// Coordinate values (1D array).
+    pub values: Vec<f64>,
+    /// Units attribute (e.g., "degrees_north", "seconds since 1970-01-01").
+    pub units: Option<String>,
+    /// Long name attribute.
+    pub long_name: Option<String>,
+}
+
+impl CoordinateVar {
+    /// Get formatted value at index with appropriate precision.
+    pub fn format_value(&self, index: usize) -> String {
+        if let Some(val) = self.values.get(index) {
+            if !val.is_finite() {
+                return "N/A".to_string();
+            }
+            // Smart formatting based on value magnitude
+            let abs_val = val.abs();
+            if abs_val == 0.0 {
+                "0".to_string()
+            } else if abs_val >= 1000.0 || abs_val < 0.01 {
+                format!("{:.2e}", val)
+            } else if abs_val >= 10.0 {
+                format!("{:.1}", val)
+            } else if abs_val >= 1.0 {
+                format!("{:.2}", val)
+            } else {
+                format!("{:.3}", val)
+            }
+        } else {
+            "?".to_string()
+        }
+    }
+
+    /// Get short label for axis display (value + optional unit suffix).
+    pub fn axis_label(&self, index: usize) -> String {
+        let val_str = self.format_value(index);
+        if let Some(ref units) = self.units {
+            // Use abbreviated unit suffixes for common cases
+            let short_unit = match units.as_str() {
+                u if u.contains("degrees_north") || u.contains("degree_north") => "°N",
+                u if u.contains("degrees_south") || u.contains("degree_south") => "°S",
+                u if u.contains("degrees_east") || u.contains("degree_east") => "°E",
+                u if u.contains("degrees_west") || u.contains("degree_west") => "°W",
+                u if u.contains("degrees") || u.contains("degree") => "°",
+                u if u.starts_with("seconds since") || u.starts_with("days since") => "",
+                _ => "",
+            };
+            if short_unit.is_empty() {
+                val_str
+            } else {
+                format!("{}{}", val_str, short_unit)
+            }
+        } else {
+            val_str
+        }
+    }
+}
+
 /// Loaded variable with its data and metadata.
 #[derive(Debug, Clone)]
 pub struct LoadedVariable {
@@ -20,21 +81,27 @@ pub struct LoadedVariable {
     /// Dimension names.
     pub dim_names: Vec<String>,
     /// Variable attributes.
-    #[allow(dead_code)]
     pub attributes: std::collections::HashMap<String, String>,
     /// Variable data type.
     pub dtype: String,
-    /// The actual multi-dimensional data as f64.
+    /// The actual multi-dimensional data as f64 (RAW, unscaled).
     /// This is an N-dimensional array that preserves the structure of the NetCDF variable.
     pub data: ArrayD<f64>,
-    /// Minimum and maximum values (pre-computed for performance).
+    /// CF convention scale factor (default 1.0).
+    pub scale_factor: f64,
+    /// CF convention add offset (default 0.0).
+    pub add_offset: f64,
+    /// Minimum and maximum values of SCALED data (pre-computed for performance).
     pub min_max: Option<(f64, f64)>,
-    /// Mean value (pre-computed for performance).
+    /// Mean value of SCALED data (pre-computed for performance).
     pub mean: Option<f64>,
-    /// Standard deviation (pre-computed for performance).
+    /// Standard deviation of SCALED data (pre-computed for performance).
     pub std: Option<f64>,
     /// Count of valid (non-NaN) values.
     pub valid_count: usize,
+    /// Coordinate variables for each dimension (if found).
+    /// Index corresponds to dimension index.
+    pub coordinates: Vec<Option<CoordinateVar>>,
 }
 
 #[allow(dead_code)]
@@ -49,17 +116,41 @@ impl LoadedVariable {
         self.data.len()
     }
 
-    /// Get minimum and maximum values.
+    /// Check if this variable has scale/offset transformation.
+    pub fn has_scale_offset(&self) -> bool {
+        (self.scale_factor - 1.0).abs() > f64::EPSILON || self.add_offset.abs() > f64::EPSILON
+    }
+
+    /// Apply scale/offset to a raw value: scaled = raw * scale_factor + add_offset
+    #[inline]
+    pub fn scale_value(&self, raw: f64) -> f64 {
+        raw * self.scale_factor + self.add_offset
+    }
+
+    /// Remove scale/offset from a scaled value: raw = (scaled - add_offset) / scale_factor
+    #[inline]
+    pub fn unscale_value(&self, scaled: f64) -> f64 {
+        (scaled - self.add_offset) / self.scale_factor
+    }
+
+    /// Get a value, optionally applying scale/offset.
+    #[inline]
+    pub fn get_value_transformed(&self, indices: &[usize], apply_scale: bool) -> Option<f64> {
+        let raw = self.data.get(IxDyn(indices)).copied()?;
+        Some(if apply_scale { self.scale_value(raw) } else { raw })
+    }
+
+    /// Get minimum and maximum values (of scaled data).
     pub fn min_max(&self) -> Option<(f64, f64)> {
         self.min_max
     }
 
-    /// Get mean value.
+    /// Get mean value (of scaled data).
     pub fn mean_value(&self) -> Option<f64> {
         self.mean
     }
 
-    /// Get standard deviation.
+    /// Get standard deviation (of scaled data).
     pub fn std_value(&self) -> Option<f64> {
         self.std
     }
@@ -74,16 +165,17 @@ impl LoadedVariable {
     /// # Arguments
     /// * `dim` - The dimension to extract (will vary)
     /// * `fixed_indices` - Indices for all other dimensions (fixed values)
+    /// * `apply_scale` - Whether to apply scale/offset transformation
     ///
     /// # Returns
     /// A 1D vector of values along the specified dimension.
-    pub fn get_1d_slice(&self, dim: usize, fixed_indices: &[usize]) -> Vec<f64> {
-        // Use direct IxDyn indexing to avoid borrow/shape juggling.
+    pub fn get_1d_slice(&self, dim: usize, fixed_indices: &[usize], apply_scale: bool) -> Vec<f64> {
         let mut result = Vec::with_capacity(self.shape[dim]);
         for i in 0..self.shape[dim] {
             let mut idx = fixed_indices.to_vec();
             idx[dim] = i;
-            if let Some(&val) = self.data.get(IxDyn(&idx)) {
+            if let Some(&raw) = self.data.get(IxDyn(&idx)) {
+                let val = if apply_scale { self.scale_value(raw) } else { raw };
                 result.push(val);
             }
         }
@@ -96,11 +188,12 @@ impl LoadedVariable {
     /// * `dim_y` - The dimension for rows (Y-axis, varies in outer loop)
     /// * `dim_x` - The dimension for columns (X-axis, varies in inner loop)
     /// * `fixed_indices` - Indices for all other dimensions
+    /// * `apply_scale` - Whether to apply scale/offset transformation
     ///
     /// # Returns
     /// A 2D vector where `result[y][x]` corresponds to data where dim_y=y and dim_x=x.
     /// This ensures correct visual mapping: row index → Y dimension, col index → X dimension.
-    pub fn get_2d_slice(&self, dim_y: usize, dim_x: usize, fixed_indices: &[usize]) -> Vec<Vec<f64>> {
+    pub fn get_2d_slice(&self, dim_y: usize, dim_x: usize, fixed_indices: &[usize], apply_scale: bool) -> Vec<Vec<f64>> {
         let mut result = Vec::with_capacity(self.shape[dim_y]);
 
         for y in 0..self.shape[dim_y] {
@@ -110,8 +203,8 @@ impl LoadedVariable {
                 idx[dim_y] = y;
                 idx[dim_x] = x;
 
-                // Use ndarray's indexing - it handles all the complexity!
-                if let Some(&val) = self.data.get(IxDyn(&idx)) {
+                if let Some(&raw) = self.data.get(IxDyn(&idx)) {
+                    let val = if apply_scale { self.scale_value(raw) } else { raw };
                     row.push(val);
                 } else {
                     row.push(f64::NAN);
@@ -126,6 +219,36 @@ impl LoadedVariable {
     /// Get value at given multi-dimensional indices.
     pub fn get_value(&self, indices: &[usize]) -> Option<f64> {
         self.data.get(IxDyn(indices)).copied()
+    }
+
+    /// Get coordinate variable for a dimension, if available.
+    pub fn get_coordinate(&self, dim: usize) -> Option<&CoordinateVar> {
+        self.coordinates.get(dim).and_then(|c| c.as_ref())
+    }
+
+    /// Get coordinate value for a dimension at given index.
+    pub fn get_coord_value(&self, dim: usize, index: usize) -> Option<f64> {
+        self.get_coordinate(dim)
+            .and_then(|c| c.values.get(index).copied())
+    }
+
+    /// Get formatted coordinate label for a dimension at given index.
+    pub fn get_coord_label(&self, dim: usize, index: usize) -> String {
+        if let Some(coord) = self.get_coordinate(dim) {
+            coord.axis_label(index)
+        } else {
+            format!("{}", index)
+        }
+    }
+
+    /// Get the units for this variable.
+    pub fn units(&self) -> Option<&str> {
+        self.attributes.get("units").map(|s| s.as_str())
+    }
+
+    /// Get the long name for this variable.
+    pub fn long_name(&self) -> Option<&str> {
+        self.attributes.get("long_name").map(|s| s.as_str())
     }
 }
 
@@ -172,20 +295,16 @@ pub fn read_variable(file_path: &Path, var_path: &str) -> Result<LoadedVariable>
     // Get data type
     let dtype = format!("{:?}", var.vartype()).replace("NcVariableType::", "").to_lowercase();
 
-    // Read the data into f64 array
-    let mut data = read_variable_array(&var, &shape)?;
+    // Read the RAW data into f64 array (don't apply scale/offset here)
+    let data = read_variable_array(&var, &shape)?;
 
-    // Apply CF scale/offset if present
-    if (scale_factor - 1.0).abs() > 0.0 || add_offset != 0.0 {
-        data.mapv_inplace(|v| v * scale_factor + add_offset);
-    }
-
-    // Compute statistics
+    // Compute statistics on SCALED data (for display purposes)
     let mut min = f64::INFINITY;
     let mut max = f64::NEG_INFINITY;
     let mut sum = 0.0f64;
     let mut count = 0usize;
-    for &v in data.iter() {
+    for &raw in data.iter() {
+        let v = raw * scale_factor + add_offset; // Apply scale for statistics
         if v.is_finite() {
             if v < min { min = v; }
             if v > max { max = v; }
@@ -198,7 +317,8 @@ pub fn read_variable(file_path: &Path, var_path: &str) -> Result<LoadedVariable>
     let std = if count > 1 {
         let mean_val = mean.unwrap();
         let mut ssd = 0.0;
-        for &v in data.iter() {
+        for &raw in data.iter() {
+            let v = raw * scale_factor + add_offset;
             if v.is_finite() {
                 let d = v - mean_val;
                 ssd += d * d;
@@ -208,6 +328,10 @@ pub fn read_variable(file_path: &Path, var_path: &str) -> Result<LoadedVariable>
     } else { None };
     let valid_count = count;
 
+    // Try to load coordinate variables for each dimension
+    // CF convention: coordinate variables have the same name as the dimension
+    let coordinates = load_coordinate_variables(&file, &dim_names, var_path);
+
     Ok(LoadedVariable {
         name: var_name.to_string(),
         path: var_path.to_string(),
@@ -216,10 +340,113 @@ pub fn read_variable(file_path: &Path, var_path: &str) -> Result<LoadedVariable>
         attributes,
         dtype,
         data,
+        scale_factor,
+        add_offset,
         min_max,
         mean,
         std,
         valid_count,
+        coordinates,
+    })
+}
+
+/// Load coordinate variables for the given dimension names.
+/// CF convention: coordinate variables have the same name as their dimension.
+fn load_coordinate_variables(
+    file: &netcdf::File,
+    dim_names: &[String],
+    var_path: &str,
+) -> Vec<Option<CoordinateVar>> {
+    // Determine the group path for the variable
+    let group_path = var_path
+        .trim_start_matches('/')
+        .rsplit_once('/')
+        .map(|(p, _)| p)
+        .unwrap_or("");
+
+    dim_names
+        .iter()
+        .map(|dim_name| {
+            // Try to find coordinate variable with same name as dimension
+            // First try in the same group as the variable
+            let coord_path = if group_path.is_empty() {
+                dim_name.clone()
+            } else {
+                format!("{}/{}", group_path, dim_name)
+            };
+
+            // Try to load from same group first, then from root
+            try_load_coordinate(file, &coord_path)
+                .or_else(|| try_load_coordinate(file, dim_name))
+        })
+        .collect()
+}
+
+/// Try to load a single coordinate variable.
+fn try_load_coordinate(file: &netcdf::File, path: &str) -> Option<CoordinateVar> {
+    let var = file.variable(path)?;
+
+    // Coordinate variables must be 1D
+    let dims = var.dimensions();
+    if dims.len() != 1 {
+        return None;
+    }
+
+    // Read the values
+    let values: Vec<f64> = match var.vartype() {
+        NcVariableType::Float(FloatType::F64) => var.get_values(..).ok()?,
+        NcVariableType::Float(FloatType::F32) => {
+            let vals: Vec<f32> = var.get_values(..).ok()?;
+            vals.into_iter().map(|x| x as f64).collect()
+        }
+        NcVariableType::Int(IntType::I64) => {
+            let vals: Vec<i64> = var.get_values(..).ok()?;
+            vals.into_iter().map(|x| x as f64).collect()
+        }
+        NcVariableType::Int(IntType::I32) => {
+            let vals: Vec<i32> = var.get_values(..).ok()?;
+            vals.into_iter().map(|x| x as f64).collect()
+        }
+        NcVariableType::Int(IntType::I16) => {
+            let vals: Vec<i16> = var.get_values(..).ok()?;
+            vals.into_iter().map(|x| x as f64).collect()
+        }
+        NcVariableType::Int(IntType::U32) => {
+            let vals: Vec<u32> = var.get_values(..).ok()?;
+            vals.into_iter().map(|x| x as f64).collect()
+        }
+        NcVariableType::Int(IntType::U16) => {
+            let vals: Vec<u16> = var.get_values(..).ok()?;
+            vals.into_iter().map(|x| x as f64).collect()
+        }
+        _ => return None,
+    };
+
+    // Read units and long_name attributes
+    let units = var
+        .attribute("units")
+        .and_then(|a| {
+            use netcdf::AttributeValue;
+            match a.value().ok()? {
+                AttributeValue::Str(s) => Some(s),
+                _ => None,
+            }
+        });
+
+    let long_name = var
+        .attribute("long_name")
+        .and_then(|a| {
+            use netcdf::AttributeValue;
+            match a.value().ok()? {
+                AttributeValue::Str(s) => Some(s),
+                _ => None,
+            }
+        });
+
+    Some(CoordinateVar {
+        values,
+        units,
+        long_name,
     })
 }
 
