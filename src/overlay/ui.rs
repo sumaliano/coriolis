@@ -757,22 +757,30 @@ fn draw_heatmap_view(
         }
     }
 
-    // Render dense heatmap with uniform scaling
-    // Uses the same scale factor for both dimensions so the heatmap looks
-    // identical in any orientation (just rotated, not stretched)
+    // Render dense heatmap with orientation-independent scaling
+    // The scale factor is calculated to work for BOTH orientations (normal and transposed)
+    // so that transposing just swaps the pixel dimensions without changing the scale
     let max_h = heatmap_area.height as usize;
     let max_w_chars = heatmap_area.width as usize;
     let pixel_width = 2;
     let max_w = max_w_chars / pixel_width;
     if max_h == 0 || max_w == 0 { return; }
 
-    // Calculate uniform scale factor (same for both dimensions)
-    // This ensures rotating the data just rotates the visual, without distortion
-    let row_scale = (max_h as f64) / (rows as f64);
-    let col_scale = (max_w as f64) / (cols as f64);
-    let scale = row_scale.min(col_scale); // Use minimum to fit within available space
+    // Terminal characters have an aspect ratio (typically ~2:1 height:width)
+    // We use pixel_width=2 to make square pixels, accounting for this
+    let char_aspect_ratio = 2.0;
 
-    // Calculate display dimensions using uniform scale
+    // Adjust horizontal scaling to account for terminal character aspect ratio
+    // This makes pixels truly square in visual space
+    let max_w_adjusted = max_w as f64 * (pixel_width as f64 / char_aspect_ratio);
+
+    // Calculate scale that works for BOTH orientations (rows×cols and cols×rows)
+    // This ensures transposing just swaps pixels without changing scale
+    let scale_normal = (max_h as f64 / rows as f64).min(max_w_adjusted / cols as f64);
+    let scale_transposed = (max_h as f64 / cols as f64).min(max_w_adjusted / rows as f64);
+    let scale = scale_normal.min(scale_transposed);
+
+    // Calculate display dimensions using the orientation-independent scale
     let disp_rows = ((rows as f64) * scale).floor().max(1.0) as usize;
     let disp_cols = ((cols as f64) * scale).floor().max(1.0) as usize;
 
@@ -780,10 +788,9 @@ fn draw_heatmap_view(
     let offset_x_chars = (((max_w - disp_cols) * pixel_width) / 2) as u16;
     let offset_y = ((max_h - disp_rows) / 2) as u16;
 
-    // Use uniform step size for both dimensions
-    let step = 1.0 / scale;
-    let row_step = step;
-    let col_step = step;
+    // Use uniform step size for consistent sampling
+    let row_step = (rows as f64) / (disp_rows as f64);
+    let col_step = (cols as f64) / (disp_cols as f64);
 
     for y in 0..disp_rows {
         let row_idx = (y as f64 * row_step).floor() as usize;
