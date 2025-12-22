@@ -37,12 +37,14 @@ impl Theme {
 /// File browser entry.
 #[derive(Debug, Clone)]
 pub struct FileEntry {
-    /// Full path to the file/directory.
+    /// Full path to the file/directory (or symlink itself).
     pub path: PathBuf,
-    /// Display name.
+    /// Display name (basename of path).
     pub name: String,
-    /// Is this entry a directory?
+    /// Is this entry a directory (final target if symlink resolves)?
     pub is_dir: bool,
+    /// Is this entry a symlink?
+    pub is_symlink: bool,
 }
 
 /// Application state.
@@ -78,6 +80,10 @@ pub struct App {
     pub file_entries: Vec<FileEntry>,
     /// File browser cursor position.
     pub file_browser_cursor: usize,
+    /// File browser scroll offset.
+    pub file_browser_scroll: usize,
+    /// Show hidden dot-prefixed entries in file browser.
+    pub show_hidden: bool,
 }
 
 impl App {
@@ -101,6 +107,8 @@ impl App {
             current_dir: current_dir.clone(),
             file_entries: Vec::new(),
             file_browser_cursor: 0,
+            file_browser_scroll: 0,
+            show_hidden: false,
         };
 
         // Check if we need to show file browser
@@ -243,6 +251,16 @@ impl App {
         self.search.cancel();
     }
 
+    /// Toggle show hidden files.
+    pub fn toggle_hidden(&mut self) {
+        self.show_hidden = !self.show_hidden;
+        self.status = if self.file_browser_mode {
+            "Show hidden: ON".to_string()
+        } else {
+            "Show hidden: OFF".to_string()
+        };
+    }
+
     /// Load directory contents for file browser.
     pub fn load_directory(&mut self) {
         self.file_entries.clear();
@@ -253,6 +271,7 @@ impl App {
                 path: self.current_dir.parent().unwrap().to_path_buf(),
                 name: "..".to_string(),
                 is_dir: true,
+                is_symlink: self.current_dir.parent().unwrap().is_symlink(),
             });
         }
 
@@ -262,38 +281,56 @@ impl App {
                 let mut files = Vec::new();
 
                 for entry in entries.flatten() {
-                    if let Ok(metadata) = entry.metadata() {
-                        let path = entry.path();
-                        let name = entry.file_name().to_string_lossy().to_string();
+                    let path = entry.path();
+                    let name = entry.file_name().to_string_lossy().to_string();
 
-                        // Skip hidden files
-                        if name.starts_with('.') {
-                            continue;
-                        }
+                    // Skip hidden files
+                    if name.starts_with('.') && !self.show_hidden {
+                        continue;
+                    }
 
-                        let file_entry = FileEntry {
-                            path: path.clone(),
-                            name,
-                            is_dir: metadata.is_dir(),
-                        };
+                    // Get symlink status using file_type (doesn't follow symlinks)
+                    let is_symlink = entry.file_type()
+                        .map(|t| t.is_symlink())
+                        .unwrap_or(false);
 
-                        if metadata.is_dir() {
-                            dirs.push(file_entry);
-                        } else {
-                            // Only show netcdf files
-                            if let Some(ext) = path.extension() {
-                                let ext_str = ext.to_string_lossy();
-                                if ext_str == "nc" || ext_str == "nc4" || ext_str == "netcdf" {
-                                    files.push(file_entry);
+                    // Try to get metadata (follows symlinks to check target type)
+                    // If this fails (broken symlink, permissions, etc.), try symlink_metadata as fallback
+                    let metadata = entry.metadata()
+                        .or_else(|_| fs::symlink_metadata(&path));
+
+                    match metadata {
+                        Ok(meta) => {
+                            let file_entry = FileEntry {
+                                path: path.clone(),
+                                name,
+                                is_dir: meta.is_dir(),
+                                is_symlink,
+                            };
+
+                            if meta.is_dir() {
+                                dirs.push(file_entry);
+                            } else {
+                                // Only show netcdf files (case-insensitive)
+                                if let Some(ext) = path.extension() {
+                                    let ext_str = ext.to_string_lossy().to_lowercase();
+                                    if ext_str == "nc" || ext_str == "nc4" || ext_str == "netcdf" {
+                                        files.push(file_entry);
+                                    }
                                 }
                             }
+                        }
+                        Err(_) => {
+                            // If we can't get any metadata, skip this entry
+                            // (this is rare and usually indicates serious permission issues)
+                            continue;
                         }
                     }
                 }
 
                 // Sort directories and files alphabetically
-                dirs.sort_by(|a, b| a.name.cmp(&b.name));
-                files.sort_by(|a, b| a.name.cmp(&b.name));
+                dirs.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+                files.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
 
                 // Add directories first, then files
                 self.file_entries.extend(dirs);
@@ -307,8 +344,9 @@ impl App {
             }
         }
 
-        // Reset cursor
+        // Reset cursor and scroll
         self.file_browser_cursor = 0;
+        self.file_browser_scroll = 0;
     }
 
     /// Navigate to selected file/directory in browser.
@@ -324,9 +362,15 @@ impl App {
             self.current_dir = entry.path.clone();
             self.load_directory();
         } else {
-            // Load file and exit browser mode
+            // Try to load file
             self.file_browser_mode = false;
             self.load_file(entry.path.clone());
+
+            // If loading failed, return to browser mode
+            if self.error_message.is_some() {
+                self.file_browser_mode = true;
+                self.status = "Error loading file (press q to quit, navigate to try another)".to_string();
+            }
         }
     }
 
@@ -341,6 +385,23 @@ impl App {
     pub fn browser_down(&mut self) {
         if self.file_browser_cursor + 1 < self.file_entries.len() {
             self.file_browser_cursor += 1;
+        }
+    }
+
+    /// Adjust scroll offset to keep cursor visible in file browser.
+    pub fn adjust_browser_scroll(&mut self, viewport_height: usize) {
+        if viewport_height == 0 {
+            return;
+        }
+
+        // Scroll down if cursor is below viewport
+        if self.file_browser_cursor >= self.file_browser_scroll + viewport_height {
+            self.file_browser_scroll = self.file_browser_cursor - viewport_height + 1;
+        }
+
+        // Scroll up if cursor is above viewport
+        if self.file_browser_cursor < self.file_browser_scroll {
+            self.file_browser_scroll = self.file_browser_cursor;
         }
     }
 

@@ -308,6 +308,11 @@ fn run_app<B: ratatui::backend::Backend>(terminal: &mut Terminal<B>, mut app: Ap
                             }
                         }
 
+                        // Toggle show hidden
+                        (KeyModifiers::NONE, KeyCode::Char('.')) => {
+                            app.toggle_hidden();
+                        }
+
                         _ => {}
                     }
                     continue;

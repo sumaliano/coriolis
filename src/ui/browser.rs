@@ -205,14 +205,21 @@ fn draw_keymap(f: &mut Frame<'_>, app: &App, area: Rect, colors: &ThemeColors) {
     f.render_widget(paragraph, area);
 }
 
-fn draw_file_browser(f: &mut Frame<'_>, app: &App, area: Rect, colors: &ThemeColors) {
+fn draw_file_browser(f: &mut Frame<'_>, app: &mut App, area: Rect, colors: &ThemeColors) {
+    // Adjust scroll to keep cursor visible (subtract 2 for borders)
+    let viewport_height = area.height.saturating_sub(2) as usize;
+    app.adjust_browser_scroll(viewport_height);
+
     let items: Vec<ListItem<'_>> = app
         .file_entries
         .iter()
         .enumerate()
+        .skip(app.file_browser_scroll)
+        .take(viewport_height)
         .map(|(idx, entry)| {
             let icon = if entry.is_dir { "📁" } else { "📄" };
-            let text = format!("{} {}", icon, entry.name);
+            let symlink_indicator = if entry.is_symlink { " →" } else { "" };
+            let text = format!("{} {}{}", icon, entry.name, symlink_indicator);
 
             let style = if idx == app.file_browser_cursor {
                 Style::default()
