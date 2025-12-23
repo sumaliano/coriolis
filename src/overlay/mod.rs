@@ -40,9 +40,10 @@ impl ViewMode {
 }
 
 /// Color palette for heatmap visualization.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum ColorPalette {
     /// Viridis colormap (perceptually uniform, colorblind-friendly).
+    #[default]
     Viridis,
     /// Plasma colormap (perceptually uniform).
     Plasma,
@@ -50,12 +51,6 @@ pub enum ColorPalette {
     Rainbow,
     /// Blue-White-Red diverging colormap.
     BlueRed,
-}
-
-impl Default for ColorPalette {
-    fn default() -> Self {
-        Self::Viridis
-    }
 }
 
 impl ColorPalette {
@@ -167,8 +162,7 @@ impl OverlayState {
                 (0, 0)
             },
             active_dim_selector: if ndim > 2 {
-                (0..ndim).find(|&i| i != (if ndim >= 2 { ndim - 2 } else { 0 })
-                                    && i != (if ndim >= 2 { ndim - 1 } else { 0 }))
+                (0..ndim).find(|&i| i != ndim.saturating_sub(2) && i != ndim.saturating_sub(1))
             } else {
                 None
             },
@@ -213,12 +207,18 @@ impl OverlayState {
 
     /// Check if scale/offset is available for this variable.
     pub fn has_scale_offset(&self) -> bool {
-        self.variable.as_ref().map(|v| v.has_scale_offset()).unwrap_or(false)
+        self.variable
+            .as_ref()
+            .map(|v| v.has_scale_offset())
+            .unwrap_or(false)
     }
 
     /// Get scale factor from variable.
     pub fn scale_factor(&self) -> f64 {
-        self.variable.as_ref().map(|v| v.scale_factor).unwrap_or(1.0)
+        self.variable
+            .as_ref()
+            .map(|v| v.scale_factor)
+            .unwrap_or(1.0)
     }
 
     /// Get add offset from variable.
@@ -236,18 +236,32 @@ impl OverlayState {
     /// Move 1D plot cursor left.
     pub fn plot_cursor_left(&mut self) {
         if let Some(ref var) = self.variable {
-            let len = if var.ndim() <= 1 { var.shape[0] } else { var.shape[self.slicing.display_dims.0] };
-            if len == 0 { return; }
+            let len = if var.ndim() <= 1 {
+                var.shape[0]
+            } else {
+                var.shape[self.slicing.display_dims.0]
+            };
+            if len == 0 {
+                return;
+            }
             self.plot_cursor = self.plot_cursor.saturating_sub(1);
-            if self.plot_cursor >= len { self.plot_cursor = len - 1; }
+            if self.plot_cursor >= len {
+                self.plot_cursor = len - 1;
+            }
         }
     }
 
     /// Move 1D plot cursor right.
     pub fn plot_cursor_right(&mut self) {
         if let Some(ref var) = self.variable {
-            let len = if var.ndim() <= 1 { var.shape[0] } else { var.shape[self.slicing.display_dims.0] };
-            if len == 0 { return; }
+            let len = if var.ndim() <= 1 {
+                var.shape[0]
+            } else {
+                var.shape[self.slicing.display_dims.0]
+            };
+            if len == 0 {
+                return;
+            }
             self.plot_cursor = (self.plot_cursor + 1).min(len - 1);
         }
     }
@@ -255,17 +269,27 @@ impl OverlayState {
     /// Move heatmap crosshair by delta.
     pub fn move_heat_cursor(&mut self, drow: isize, dcol: isize) {
         if let Some(ref var) = self.variable {
-            if var.ndim() < 2 { return; }
+            if var.ndim() < 2 {
+                return;
+            }
             let rows = var.shape[self.slicing.display_dims.0];
             let cols = var.shape[self.slicing.display_dims.1];
             let nr = rows as isize;
             let nc = cols as isize;
             let mut r = self.heat_cursor_row as isize + drow;
             let mut c = self.heat_cursor_col as isize + dcol;
-            if r < 0 { r = 0; }
-            if c < 0 { c = 0; }
-            if r >= nr { r = nr - 1; }
-            if c >= nc { c = nc - 1; }
+            if r < 0 {
+                r = 0;
+            }
+            if c < 0 {
+                c = 0;
+            }
+            if r >= nr {
+                r = nr - 1;
+            }
+            if c >= nc {
+                c = nc - 1;
+            }
             self.heat_cursor_row = r as usize;
             self.heat_cursor_col = c as usize;
         }
@@ -274,13 +298,23 @@ impl OverlayState {
     /// Copy visible data to clipboard as TSV depending on current view.
     pub fn copy_visible_to_clipboard(&self) {
         if let Some(ref var) = self.variable {
-            let mut cb = match arboard::Clipboard::new() { Ok(c) => c, Err(_) => return };
+            let mut cb = match arboard::Clipboard::new() {
+                Ok(c) => c,
+                Err(_) => return,
+            };
             let apply_scale = self.apply_scale_offset;
             match self.view_mode {
                 ViewMode::Plot1D => {
-                    let dim = if var.ndim() <= 1 { 0 } else { self.slicing.display_dims.0 };
+                    let dim = if var.ndim() <= 1 {
+                        0
+                    } else {
+                        self.slicing.display_dims.0
+                    };
                     let data: Vec<f64> = if var.ndim() <= 1 {
-                        var.data.iter().map(|&v| if apply_scale { var.scale_value(v) } else { v }).collect()
+                        var.data
+                            .iter()
+                            .map(|&v| if apply_scale { var.scale_value(v) } else { v })
+                            .collect()
                     } else {
                         var.get_1d_slice(dim, &self.slicing.slice_indices, apply_scale)
                     };
@@ -289,20 +323,26 @@ impl OverlayState {
                         out.push_str(&format!("{}\t{}\n", i, v));
                     }
                     let _ = cb.set_text(out);
-                }
+                },
                 ViewMode::Heatmap | ViewMode::Table => {
-                    let data = var.get_2d_slice(self.slicing.display_dims.0, self.slicing.display_dims.1, &self.slicing.slice_indices, apply_scale);
+                    let data = var.get_2d_slice(
+                        self.slicing.display_dims.0,
+                        self.slicing.display_dims.1,
+                        &self.slicing.slice_indices,
+                        apply_scale,
+                    );
                     let mut out = String::new();
-                    for r in 0..data.len() {
-                        let row = &data[r];
+                    for row in &data {
                         for (ci, v) in row.iter().enumerate() {
-                            if ci > 0 { out.push('\t'); }
+                            if ci > 0 {
+                                out.push('\t');
+                            }
                             out.push_str(&format!("{}", v));
                         }
                         out.push('\n');
                     }
                     let _ = cb.set_text(out);
-                }
+                },
             }
         }
     }
@@ -347,8 +387,7 @@ impl OverlayState {
 
             if dim < var.ndim() && !is_display_dim {
                 let max = var.shape[dim].saturating_sub(1);
-                self.slicing.slice_indices[dim] =
-                    (self.slicing.slice_indices[dim] + 1).min(max);
+                self.slicing.slice_indices[dim] = (self.slicing.slice_indices[dim] + 1).min(max);
             }
         }
     }
@@ -356,8 +395,7 @@ impl OverlayState {
     /// Navigate to previous slice index for a dimension.
     pub fn prev_slice(&mut self, dim: usize) {
         if dim < self.slicing.slice_indices.len() {
-            self.slicing.slice_indices[dim] =
-                self.slicing.slice_indices[dim].saturating_sub(1);
+            self.slicing.slice_indices[dim] = self.slicing.slice_indices[dim].saturating_sub(1);
         }
     }
 
@@ -387,7 +425,7 @@ impl OverlayState {
                                 break;
                             }
                         }
-                    }
+                    },
                     Some(current) => {
                         // Find next non-display dimension
                         let mut found_current = false;
@@ -399,7 +437,8 @@ impl OverlayState {
                                 let is_display = if is_1d {
                                     i == self.slicing.display_dims.0
                                 } else {
-                                    i == self.slicing.display_dims.0 || i == self.slicing.display_dims.1
+                                    i == self.slicing.display_dims.0
+                                        || i == self.slicing.display_dims.1
                                 };
 
                                 if !is_display {
@@ -409,7 +448,7 @@ impl OverlayState {
                             }
                         }
                         self.slicing.active_dim_selector = next;
-                    }
+                    },
                 }
             }
         }
@@ -434,9 +473,10 @@ impl OverlayState {
         if let Some(ref var) = self.variable {
             let ndim = var.ndim();
             if ndim >= 2 {
-                let temp = self.slicing.display_dims.0;
-                self.slicing.display_dims.0 = self.slicing.display_dims.1;
-                self.slicing.display_dims.1 = temp;
+                std::mem::swap(
+                    &mut self.slicing.display_dims.0,
+                    &mut self.slicing.display_dims.1,
+                );
             }
         }
     }
@@ -481,14 +521,13 @@ impl OverlayState {
             // Update active selector if it's now a display dimension
             if let Some(active) = self.slicing.active_dim_selector {
                 if active == next {
-                    self.slicing.active_dim_selector = (0..ndim)
-                        .find(|&i| {
-                            if is_1d {
-                                i != self.slicing.display_dims.0
-                            } else {
-                                i != self.slicing.display_dims.0 && i != self.slicing.display_dims.1
-                            }
-                        });
+                    self.slicing.active_dim_selector = (0..ndim).find(|&i| {
+                        if is_1d {
+                            i != self.slicing.display_dims.0
+                        } else {
+                            i != self.slicing.display_dims.0 && i != self.slicing.display_dims.1
+                        }
+                    });
                 }
             }
         }

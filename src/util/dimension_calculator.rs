@@ -37,16 +37,14 @@ impl DimensionCalculator {
             ViewMode::Plot1D => {
                 // For 1D: slice through all dimensions except the plot dimension
                 let plot_dim = self.get_plot_dimension();
-                (0..self.ndim)
-                    .filter(|&i| i != plot_dim)
-                    .collect()
-            }
+                (0..self.ndim).filter(|&i| i != plot_dim).collect()
+            },
             ViewMode::Table | ViewMode::Heatmap => {
                 // For 2D: slice through all dimensions except the two being displayed
                 (0..self.ndim)
                     .filter(|&i| i != self.display_dims.0 && i != self.display_dims.1)
                     .collect()
-            }
+            },
         }
     }
 
@@ -62,7 +60,7 @@ impl DimensionCalculator {
                 } else {
                     vec![]
                 }
-            }
+            },
         }
     }
 

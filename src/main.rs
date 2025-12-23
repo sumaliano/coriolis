@@ -1,11 +1,11 @@
 //! Coriolis - A terminal-based NetCDF data viewer.
 
 use anyhow::Result;
-use coriolis::app::App;
-use coriolis::ui;
-use coriolis::overlay::ViewMode;
-use coriolis::util;
 use clap::Parser;
+use coriolis::app::App;
+use coriolis::overlay::ViewMode;
+use coriolis::ui;
+use coriolis::util;
 use crossterm::{
     event::{self, Event, KeyCode, KeyModifiers},
     execute,
@@ -34,21 +34,34 @@ fn main() -> Result<()> {
 
     // Set up logging if --log option is provided
     if let Some(log_path) = &args.log {
-        let log_path = log_path.clone();
-        let subscriber = FmtSubscriber::builder()
-            .with_max_level(Level::DEBUG)
-            .with_writer(move || {
-                std::fs::OpenOptions::new()
-                    .create(true)
-                    .write(true)
-                    .truncate(true)
-                    .append(false)
-                    .open(&log_path)
-                    .expect("Failed to open log file")
-            })
-            .finish();
-        tracing::subscriber::set_global_default(subscriber)?;
-        tracing::info!("Starting Coriolis");
+        match std::fs::OpenOptions::new()
+            .create(true)
+            .write(true)
+            .truncate(true)
+            .open(log_path)
+        {
+            Ok(file) => {
+                let subscriber = FmtSubscriber::builder()
+                    .with_max_level(Level::DEBUG)
+                    .with_writer(move || {
+                        file.try_clone().unwrap_or_else(|_| {
+                            // Fallback to /dev/null if clone fails
+                            std::fs::File::create("/dev/null").expect("Cannot open /dev/null")
+                        })
+                    })
+                    .finish();
+                if tracing::subscriber::set_global_default(subscriber).is_ok() {
+                    tracing::info!("Starting Coriolis");
+                }
+            },
+            Err(e) => {
+                eprintln!(
+                    "Warning: Failed to open log file '{}': {}",
+                    log_path.display(),
+                    e
+                );
+            },
+        }
     }
 
     // Validate path if provided
@@ -79,9 +92,8 @@ fn main() -> Result<()> {
         eprintln!("Error: {}", err);
     }
 
-    if args.log.is_some() {
-        tracing::info!("Coriolis exited");
-    }
+    // Log exit if logging was successfully set up
+    tracing::info!("Coriolis exited");
 
     Ok(())
 }
@@ -103,20 +115,20 @@ fn run_app<B: ratatui::backend::Backend>(terminal: &mut Terminal<B>, mut app: Ap
                         | (KeyModifiers::NONE, KeyCode::Char('p')) => {
                             app.overlay.close();
                             app.status = "Data viewer closed".to_string();
-                        }
+                        },
                         // Cycle view mode with Tab
                         (KeyModifiers::NONE, KeyCode::Tab) => {
                             app.overlay.cycle_view_mode();
                             let view_name = app.overlay.view_mode.name();
                             app.overlay.set_status(format!("View: {}", view_name));
-                        }
+                        },
                         // Cycle color palette with C
                         (KeyModifiers::NONE, KeyCode::Char('c'))
                         | (KeyModifiers::NONE, KeyCode::Char('C')) => {
                             app.overlay.cycle_color_palette();
                             let palette_name = app.overlay.color_palette.name();
                             app.overlay.set_status(format!("Palette: {}", palette_name));
-                        }
+                        },
                         // Contextual arrows/hjkl
                         // Table: pan; Plot1D: move cursor; Heatmap: move crosshair
                         (KeyModifiers::NONE, KeyCode::Up)
@@ -124,48 +136,45 @@ fn run_app<B: ratatui::backend::Backend>(terminal: &mut Terminal<B>, mut app: Ap
                             match app.overlay.view_mode {
                                 ViewMode::Table => app.overlay.scroll_up(1),
                                 ViewMode::Heatmap => app.overlay.move_heat_cursor(-1, 0),
-                                ViewMode::Plot1D => {/* reserved for future y-zoom */}
+                                ViewMode::Plot1D => { /* reserved for future y-zoom */ },
                             }
-                        }
+                        },
                         (KeyModifiers::NONE, KeyCode::Down)
                         | (KeyModifiers::NONE, KeyCode::Char('j')) => {
                             match app.overlay.view_mode {
                                 ViewMode::Table => app.overlay.scroll_down(1),
                                 ViewMode::Heatmap => app.overlay.move_heat_cursor(1, 0),
-                                ViewMode::Plot1D => {/* reserved for future y-zoom */}
+                                ViewMode::Plot1D => { /* reserved for future y-zoom */ },
                             }
-                        }
+                        },
                         (KeyModifiers::NONE, KeyCode::Left)
-                        | (KeyModifiers::NONE, KeyCode::Char('h')) => {
-                            match app.overlay.view_mode {
-                                ViewMode::Table => app.overlay.scroll_left(1),
-                                ViewMode::Heatmap => app.overlay.move_heat_cursor(0, -1),
-                                ViewMode::Plot1D => app.overlay.plot_cursor_left(),
-                            }
-                        }
+                        | (KeyModifiers::NONE, KeyCode::Char('h')) => match app.overlay.view_mode {
+                            ViewMode::Table => app.overlay.scroll_left(1),
+                            ViewMode::Heatmap => app.overlay.move_heat_cursor(0, -1),
+                            ViewMode::Plot1D => app.overlay.plot_cursor_left(),
+                        },
                         (KeyModifiers::NONE, KeyCode::Right)
-                        | (KeyModifiers::NONE, KeyCode::Char('l')) => {
-                            match app.overlay.view_mode {
-                                ViewMode::Table => app.overlay.scroll_right(1),
-                                ViewMode::Heatmap => app.overlay.move_heat_cursor(0, 1),
-                                ViewMode::Plot1D => app.overlay.plot_cursor_right(),
-                            }
-                        }
+                        | (KeyModifiers::NONE, KeyCode::Char('l')) => match app.overlay.view_mode {
+                            ViewMode::Table => app.overlay.scroll_right(1),
+                            ViewMode::Heatmap => app.overlay.move_heat_cursor(0, 1),
+                            ViewMode::Plot1D => app.overlay.plot_cursor_right(),
+                        },
                         // Page up/down for large scrolling
                         (KeyModifiers::CONTROL, KeyCode::Char('u')) => {
                             app.overlay.scroll_up(10);
-                        }
+                        },
                         (KeyModifiers::CONTROL, KeyCode::Char('d')) => {
                             app.overlay.scroll_down(10);
-                        }
+                        },
                         // Dimension selector navigation (Tab through dimensions for 3D+ data)
-                        | (KeyModifiers::NONE, KeyCode::Char('s')) => {
+                        (KeyModifiers::NONE, KeyCode::Char('s')) => {
                             app.overlay.next_dim_selector();
-                            let status_msg = if let Some(dim) = app.overlay.slicing.active_dim_selector {
+                            let status_msg = if let Some(dim) =
+                                app.overlay.slicing.active_dim_selector
+                            {
                                 if let Some(ref var) = app.overlay.variable {
-                                    let dim_name = var.dim_names.get(dim)
-                                        .map(|s| s.as_str())
-                                        .unwrap_or("?");
+                                    let dim_name =
+                                        var.dim_names.get(dim).map(|s| s.as_str()).unwrap_or("?");
                                     Some(format!("Slicing dimension: {}", dim_name))
                                 } else {
                                     None
@@ -176,44 +185,48 @@ fn run_app<B: ratatui::backend::Backend>(terminal: &mut Terminal<B>, mut app: Ap
                             if let Some(msg) = status_msg {
                                 app.overlay.set_status(msg);
                             }
-                        }
+                        },
                         // Slice navigation with PageUp/PageDown
                         (KeyModifiers::NONE, KeyCode::PageUp) => {
                             app.overlay.increment_active_slice();
-                        }
+                        },
                         (KeyModifiers::NONE, KeyCode::PageDown) => {
                             app.overlay.decrement_active_slice();
-                        }
+                        },
                         // Also keep +/- for slice navigation
                         (KeyModifiers::NONE, KeyCode::Char(']'))
                         | (KeyModifiers::NONE, KeyCode::Char('+'))
                         | (KeyModifiers::NONE, KeyCode::Char('=')) => {
                             app.overlay.increment_active_slice();
-                        }
+                        },
                         (KeyModifiers::NONE, KeyCode::Char('['))
                         | (KeyModifiers::NONE, KeyCode::Char('-'))
                         | (KeyModifiers::NONE, KeyCode::Char('_')) => {
                             app.overlay.decrement_active_slice();
-                        }
+                        },
                         // Change which dimensions are displayed
                         (KeyModifiers::NONE, KeyCode::Char('r'))
                         | (KeyModifiers::NONE, KeyCode::Char('R')) => {
                             app.overlay.rotate_display_dims();
-                            app.overlay.set_status("Rotated Y ↔ X dimensions".to_string());
-                        }
+                            app.overlay
+                                .set_status("Rotated Y ↔ X dimensions".to_string());
+                        },
                         // Simplified UI: removed 1D options (auto/log/agg) and heatmap range/zoom/pan toggles
                         // Clipboard export remains below
                         (KeyModifiers::CONTROL, KeyCode::Char('c')) => {
                             app.overlay.copy_visible_to_clipboard();
-                            app.overlay.set_status("Copied visible data to clipboard (TSV)".to_string());
-                        }
+                            app.overlay
+                                .set_status("Copied visible data to clipboard (TSV)".to_string());
+                        },
                         (KeyModifiers::NONE, KeyCode::Char('y'))
                         | (KeyModifiers::NONE, KeyCode::Char('Y')) => {
                             app.overlay.cycle_display_dim(0);
                             // Show which dimension was selected
                             let status_msg = if let Some(ref var) = app.overlay.variable {
                                 let dim_idx = app.overlay.slicing.display_dims.0;
-                                let dim_name = var.dim_names.get(dim_idx)
+                                let dim_name = var
+                                    .dim_names
+                                    .get(dim_idx)
                                     .map(|s| s.as_str())
                                     .unwrap_or("?");
                                 format!("Y dimension: {}", dim_name)
@@ -221,14 +234,16 @@ fn run_app<B: ratatui::backend::Backend>(terminal: &mut Terminal<B>, mut app: Ap
                                 "Cycled Y dimension".to_string()
                             };
                             app.overlay.set_status(status_msg);
-                        }
+                        },
                         (KeyModifiers::NONE, KeyCode::Char('x'))
                         | (KeyModifiers::NONE, KeyCode::Char('X')) => {
                             app.overlay.cycle_display_dim(1);
                             // Show which dimension was selected
                             let status_msg = if let Some(ref var) = app.overlay.variable {
                                 let dim_idx = app.overlay.slicing.display_dims.1;
-                                let dim_name = var.dim_names.get(dim_idx)
+                                let dim_name = var
+                                    .dim_names
+                                    .get(dim_idx)
                                     .map(|s| s.as_str())
                                     .unwrap_or("?");
                                 format!("X dimension: {}", dim_name)
@@ -236,20 +251,29 @@ fn run_app<B: ratatui::backend::Backend>(terminal: &mut Terminal<B>, mut app: Ap
                                 "Cycled X dimension".to_string()
                             };
                             app.overlay.set_status(status_msg);
-                        }
+                        },
                         // Toggle scale/offset
                         (KeyModifiers::NONE, KeyCode::Char('o'))
                         | (KeyModifiers::NONE, KeyCode::Char('O')) => {
                             if app.overlay.has_scale_offset() {
                                 app.overlay.toggle_scale_offset();
-                                let mode = if app.overlay.apply_scale_offset { "Scaled" } else { "Raw" };
-                                app.overlay.set_status(format!("Data: {} (scale={}, offset={})",
-                                    mode, app.overlay.scale_factor(), app.overlay.add_offset()));
+                                let mode = if app.overlay.apply_scale_offset {
+                                    "Scaled"
+                                } else {
+                                    "Raw"
+                                };
+                                app.overlay.set_status(format!(
+                                    "Data: {} (scale={}, offset={})",
+                                    mode,
+                                    app.overlay.scale_factor(),
+                                    app.overlay.add_offset()
+                                ));
                             } else {
-                                app.overlay.set_status("No scale/offset for this variable".to_string());
+                                app.overlay
+                                    .set_status("No scale/offset for this variable".to_string());
                             }
-                        }
-                        _ => {}
+                        },
+                        _ => {},
                     }
                     continue;
                 }
@@ -267,11 +291,11 @@ fn run_app<B: ratatui::backend::Backend>(terminal: &mut Terminal<B>, mut app: Ap
                                     app.tree_cursor.goto_node(path);
                                 }
                             }
-                        }
+                        },
                         KeyCode::Esc => app.search.cancel(),
                         KeyCode::Backspace => app.search.backspace(),
                         KeyCode::Char(c) => app.search.input(c),
-                        _ => {}
+                        _ => {},
                     }
                     continue;
                 }
@@ -286,18 +310,18 @@ fn run_app<B: ratatui::backend::Backend>(terminal: &mut Terminal<B>, mut app: Ap
                         (KeyModifiers::NONE, KeyCode::Up)
                         | (KeyModifiers::NONE, KeyCode::Char('k')) => {
                             app.browser_up();
-                        }
+                        },
                         (KeyModifiers::NONE, KeyCode::Down)
                         | (KeyModifiers::NONE, KeyCode::Char('j')) => {
                             app.browser_down();
-                        }
+                        },
 
                         // Select/Open
                         (KeyModifiers::NONE, KeyCode::Enter)
                         | (KeyModifiers::NONE, KeyCode::Char('l'))
                         | (KeyModifiers::NONE, KeyCode::Right) => {
                             app.browser_select();
-                        }
+                        },
 
                         // Go to parent directory
                         (KeyModifiers::NONE, KeyCode::Char('h'))
@@ -306,14 +330,14 @@ fn run_app<B: ratatui::backend::Backend>(terminal: &mut Terminal<B>, mut app: Ap
                                 app.current_dir = parent.to_path_buf();
                                 app.load_directory();
                             }
-                        }
+                        },
 
                         // Toggle show hidden
                         (KeyModifiers::NONE, KeyCode::Char('.')) => {
                             app.toggle_hidden();
-                        }
+                        },
 
-                        _ => {}
+                        _ => {},
                     }
                     continue;
                 }

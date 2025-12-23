@@ -1,245 +1,231 @@
-# Coriolis 🦀
+# Coriolis
+
+[![CI](https://github.com/jsilva/coriolis/actions/workflows/ci.yml/badge.svg)](https://github.com/jsilva/coriolis/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Rust](https://img.shields.io/badge/rust-1.70%2B-blue.svg)](https://www.rust-lang.org)
 
 A fast, terminal-based NetCDF data explorer and viewer with vim-style navigation.
 
-(Named after the Coriolis effect — fundamental in understanding Earth's atmospheric and oceanic circulation.)
+*Named after the Coriolis effect — fundamental in understanding Earth's atmospheric and oceanic circulation.*
 
-Note: This application reads NetCDF files (classic and NetCDF‑4/HDF5‑backed). It does not provide generic HDF5 browsing beyond the NetCDF common data model.
+![Coriolis Demo](https://via.placeholder.com/800x400?text=Coriolis+TUI+Screenshot)
 
-## Overview
+## Features
 
-Coriolis lets you quickly explore NetCDF datasets from the terminal:
-- Browse dataset structure (groups, dimensions, variables, attributes)
-- View variable metadata and previews
-- Open an interactive data viewer overlay with multiple modes: table, 1D plot, and heatmap
-- Slice multi-dimensional arrays and navigate with familiar vim keys
+- **Fast NetCDF reading** — supports both classic and NetCDF-4/HDF5-backed files
+- **Tree-based navigation** — browse groups, variables, dimensions, and attributes
+- **Interactive data viewer** — table view, 1D plots, and heatmap visualizations
+- **Multi-dimensional slicing** — navigate through 3D+ arrays with intuitive controls
+- **Vim-style shortcuts** — feel at home with familiar keybindings
+- **Dual themes** — Gruvbox light and dark themes
+- **Portable binary** — single static binary on Linux (no runtime dependencies)
+- **Low memory footprint** — efficient handling of large datasets
+- **Clipboard support** — copy data and tree structures
 
-## Stack
+## Quick Start
 
-- Language: Rust (edition 2021, Rust ≥ 1.70)
-- TUI framework: `ratatui` + `crossterm`
-- Data access: `netcdf` crate (with optional static linking)
-- Arrays: `ndarray`
-- CLI: `clap`
-- Logging: `tracing` + `tracing-subscriber`
+### Installation
 
-Package manager and build tool: Cargo
-
-Binary entry point: `src/main.rs` (bin name `coriolis`)
-
-## Requirements
-
-Base (all platforms):
-- Rust toolchain (rustup) — Rust 1.70 or newer
-
-For Linux static build (recommended for portability):
-- musl tools: `musl-gcc` (package `musl-tools` on Debian/Ubuntu)
-- Rust MUSL target: `x86_64-unknown-linux-musl`
-
-Optional tooling:
-- `cargo-watch` for `make watch`
-
-## Installation and Setup
-
-Install Rust using rustup:
+#### From Source (Recommended)
 
 ```bash
-curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
-source "$HOME/.cargo/env"
-```
-
-Clone and build:
-
-```bash
-git clone <this-repo>
+# Clone the repository
+git clone https://github.com/jsilva/coriolis.git
 cd coriolis
-make release    # or: cargo build --release
-```
 
-Install system-wide (optional, requires sudo):
-
-```bash
-sudo make install           # install target/release/coriolis
-sudo make install-static    # after `make static`, installs the static binary
-```
-
-## Build and Run
-
-Using Makefile (recommended shortcuts):
-
-```bash
-make build          # dev build
-make release        # optimized build
-make static         # fully static Linux binary (portable)
-```
-
-Using Cargo directly:
-
-```bash
+# Build and install
 cargo build --release
-./target/release/coriolis path/to/file.nc
+sudo cp target/release/coriolis /usr/local/bin/
 ```
 
-Run with a file or directory (directory opens the file browser):
+#### Using Cargo
 
 ```bash
-coriolis path/to/file_or_directory
+cargo install coriolis
 ```
 
-CLI options:
-
-```text
-USAGE: coriolis [FILE_OR_DIR] [--log PATH]
-
-ARGS:
-  FILE_OR_DIR         Optional path to a NetCDF file or directory to start in
-
-OPTIONS:
-  --log <PATH>        Enable logging to the given file
-```
-
-## Makefile Targets
+### Usage
 
 ```bash
-make build            # Development build (fast)
-make release          # Production build (optimized)
-make static           # Build static Linux binary via MUSL
-make test             # Run tests
-make test-verbose     # Run tests with output
-make fmt              # Format code
-make fmt-check        # Check formatting
-make clippy           # Lints with warnings as errors
-make doc              # Build docs
-make clean            # Remove build artifacts
-make install          # Install release binary to /usr/local/bin
-make install-static   # Install static binary to /usr/local/bin
-make uninstall        # Remove installed binary
-make run FILE=data.nc # Run with a file
-make run-dev FILE=... # Run dev build with a file
-make check            # fmt-check + clippy + test + build
-make watch            # Rebuild on changes (needs cargo-watch)
-make help             # Show this summary
-```
+# Open a NetCDF file
+coriolis path/to/data.nc
 
-Helper script:
-- `build.sh`: cross‑platform convenience script for producing portable binaries. On Linux it builds a fully static MUSL binary; on macOS it builds a standard release.
+# Open a directory (file browser mode)
+coriolis path/to/directory/
+
+# Enable debug logging
+coriolis data.nc --log debug.log
+```
 
 ## Keyboard Shortcuts
 
 ### Browser Navigation
+
 | Key | Action |
 |-----|--------|
-| `↑/k` | Move up |
-| `↓/j` | Move down |
-| `→/l` | Expand node |
-| `←/h` | Collapse node |
+| `j` / `↓` | Move down |
+| `k` / `↑` | Move up |
+| `l` / `→` | Expand node |
+| `h` / `←` | Collapse node |
 | `gg` | Go to top |
 | `G` | Go to bottom |
+| `Ctrl+f` | Page down |
+| `Ctrl+b` | Page up |
 | `/` | Search |
-| `n` | Next match |
-| `N` | Previous match |
-| `t` | Toggle preview |
-| `T` | Change theme |
-| `p` | Open data viewer (on variable) |
-| `c` | Copy tree |
-| `y` | Copy node |
-| `?` | Help |
+| `n` / `N` | Next / Previous match |
+| `p` | Open data viewer |
+| `t` | Toggle preview panel |
+| `T` | Cycle theme |
+| `c` | Copy tree structure |
+| `y` | Copy current node |
+| `f` | Open file browser |
 | `q` | Quit |
 
-### Data Viewer (when overlay is open)
+### Data Viewer
+
 | Key | Action |
 |-----|--------|
-| `Tab` | Cycle view mode (Table → 1D Plot → Heatmap) |
-| `hjkl` / Arrows | Pan table / navigate |
-| `Ctrl+u` | Page up |
-| `Ctrl+d` | Page down |
-| `[` / `]` | Select dimension (for 3D+ data) |
-| `+` / `-` | Change slice index |
-| `Esc` / `q` / `p` | Close viewer |
+| `Tab` | Cycle view mode (Table → Plot → Heatmap) |
+| `h/j/k/l` | Navigate / Pan |
+| `Ctrl+u/d` | Page up / down |
+| `s` | Select slice dimension |
+| `+/-` or `PgUp/PgDn` | Change slice index |
+| `y/x` | Cycle Y/X display dimension |
+| `r` | Rotate (swap) Y/X dimensions |
+| `o` | Toggle scale/offset (raw vs scaled data) |
+| `c` | Cycle color palette (heatmap) |
+| `Ctrl+c` | Copy visible data to clipboard |
+| `Esc` / `q` | Close viewer |
 
-## Features
+## Building
 
-- 🚀 Fast NetCDF reading (classic + NetCDF‑4/HDF5‑backed)
-- 🌲 Tree-based navigation of groups, variables, dimensions, attributes
-- 🔍 Search within the tree
-- ⌨️ Vim-style shortcuts
-- 🎨 Gruvbox light/dark themes
-- 📦 Single portable static binary on Linux (no runtime deps)
-- 💾 Low memory usage
-- 📊 Interactive data viewer: table, 1D plot, heatmap
-- 🧊 Multi-dimensional slicing for 3D+ arrays
+### Requirements
+
+- Rust 1.70 or newer
+- For static Linux builds: `musl-tools` package
+
+### Build Commands
+
+```bash
+# Development build
+cargo build
+
+# Release build (optimized)
+cargo build --release
+
+# Static Linux binary (portable, no dependencies)
+rustup target add x86_64-unknown-linux-musl
+cargo build --release --target x86_64-unknown-linux-musl
+
+# Run tests
+cargo test
+
+# Run lints
+cargo clippy
+```
+
+### Using the Makefile
+
+```bash
+make build          # Development build
+make release        # Optimized build
+make static         # Static Linux binary
+make test           # Run tests
+make clippy         # Lint checks
+make fmt            # Format code
+make install        # Install to /usr/local/bin
+make help           # Show all targets
+```
 
 ## Project Structure
 
 ```
 src/
-├── main.rs            # Entry point, terminal event loop & key handling
-├── lib.rs             # Module exports
-├── app.rs             # Application state & business logic
-├── data/              # NetCDF reading and dataset representation
-│   ├── dataset.rs     # Dataset metadata wrapper
-│   ├── node.rs        # Tree node types (root/group/var/dim/attr)
-│   ├── reader.rs      # File reading utilities
-│   └── variable_data.rs # Variable data loading & slicing
-├── navigation/        # Navigation and search state
-│   ├── tree.rs        # Tree cursor & visibility
-│   └── search.rs      # Search logic
-├── overlay/           # Data viewer overlay (state + UI helpers)
-│   └── ui.rs          # Overlay rendering primitives
-├── ui/                # Common UI components & theming
-│   ├── browser.rs     # Main browser view
-│   └── theme.rs       # Themes and colors
-└── util/              # Utilities (clipboard, colormaps, layout, etc.)
+├── main.rs              # Entry point and event loop
+├── lib.rs               # Library exports
+├── app.rs               # Application state
+├── error.rs             # Error types
+├── data/                # NetCDF data handling
+│   ├── dataset.rs       # Dataset wrapper
+│   ├── node.rs          # Tree node types
+│   ├── reader.rs        # File reading
+│   └── variable_data.rs # Variable loading and slicing
+├── navigation/          # Navigation logic
+│   ├── tree.rs          # Tree cursor and state
+│   └── search.rs        # Search functionality
+├── overlay/             # Data viewer overlay
+│   ├── mod.rs           # Overlay state
+│   └── ui.rs            # Overlay rendering
+├── ui/                  # UI components
+│   ├── mod.rs           # UI entry point
+│   ├── browser.rs       # Main browser view
+│   └── theme.rs         # Color themes
+└── util/                # Utilities
+    ├── clipboard.rs     # Clipboard support
+    ├── colormaps.rs     # Heatmap color palettes
+    └── ...
 ```
-
-## Environment Variables
-
-No required environment variables.
-
-Optional:
-- `PKG_CONFIG_ALL_STATIC=1` — used by static builds to prefer static libraries (already set in Makefile/build.sh for MUSL builds).
-
-## Tests
-
-Run all tests:
-
-```bash
-cargo test
-# or
-make test
-```
-
-Show test output:
-
-```bash
-make test-verbose
-```
-
-## Development
-
-- Lint: `make clippy`
-- Format: `make fmt` / `make fmt-check`
-- Docs: `make doc`
-- Auto-rebuild on changes: `make watch` (requires `cargo install cargo-watch`)
 
 ## Supported Platforms
 
-- Linux: first-class (including fully static portable binary via MUSL)
-- macOS: standard Cargo builds work
-- Windows: standard Cargo builds should work in a proper terminal; for static cross‑compile, use the guidance in `build.sh` (requires mingw toolchain)
+| Platform | Status | Notes |
+|----------|--------|-------|
+| Linux | Fully supported | Static binary available |
+| macOS | Supported | Standard Cargo build |
+| Windows | Experimental | Requires proper terminal emulator |
+
+## Configuration
+
+Coriolis currently requires no configuration files. All settings are controlled via command-line arguments and runtime keyboard shortcuts.
+
+### Command-Line Options
+
+```
+USAGE:
+    coriolis [OPTIONS] [FILE_OR_DIR]
+
+ARGS:
+    <FILE_OR_DIR>    Path to NetCDF file or directory
+
+OPTIONS:
+    --log <PATH>     Enable logging to file
+    -h, --help       Print help information
+    -V, --version    Print version information
+```
+
+## Contributing
+
+Contributions are welcome! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
+
+### Development Setup
+
+```bash
+# Clone and build
+git clone https://github.com/jsilva/coriolis.git
+cd coriolis
+cargo build
+
+# Run with a test file
+cargo run -- path/to/test.nc
+
+# Run tests
+cargo test
+
+# Check formatting and lints
+cargo fmt --check
+cargo clippy
+```
 
 ## License
 
-Licensed under the MIT License (see `Cargo.toml`).
+This project is licensed under the MIT License — see the [LICENSE](LICENSE) file for details.
 
-TODO: Add a `LICENSE` file to the repository root if missing.
+## Acknowledgments
+
+- Built with [Ratatui](https://github.com/ratatui-org/ratatui) for the terminal UI
+- Uses the [netcdf](https://crates.io/crates/netcdf) crate for data access
+- Color schemes inspired by [Gruvbox](https://github.com/morhetz/gruvbox)
 
 ## Why "Coriolis"?
 
-The Coriolis effect is crucial in atmospheric and oceanic sciences — fields that commonly use NetCDF for data storage — fitting for a tool that helps visualize scientific data.
-
-## Notes and TODOs
-
-- TODO: Document any additional CLI flags if introduced in the future.
-- TODO: Attach prebuilt release binaries (Linux/macOS/Windows) to GitHub Releases.
-- TODO: Expand documentation for very large datasets and performance tips.
+The Coriolis effect is a fundamental concept in atmospheric and oceanic sciences — fields that heavily rely on NetCDF for data storage and exchange. This tool aims to make exploring that scientific data as intuitive as the physical phenomena it represents.

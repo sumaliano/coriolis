@@ -29,7 +29,7 @@ impl CoordinateVar {
             let abs_val = val.abs();
             if abs_val == 0.0 {
                 "0".to_string()
-            } else if abs_val >= 1000.0 || abs_val < 0.01 {
+            } else if !(0.01..1000.0).contains(&abs_val) {
                 format!("{:.2e}", val)
             } else if abs_val >= 10.0 {
                 format!("{:.1}", val)
@@ -137,7 +137,11 @@ impl LoadedVariable {
     #[inline]
     pub fn get_value_transformed(&self, indices: &[usize], apply_scale: bool) -> Option<f64> {
         let raw = self.data.get(IxDyn(indices)).copied()?;
-        Some(if apply_scale { self.scale_value(raw) } else { raw })
+        Some(if apply_scale {
+            self.scale_value(raw)
+        } else {
+            raw
+        })
     }
 
     /// Get minimum and maximum values (of scaled data).
@@ -175,7 +179,11 @@ impl LoadedVariable {
             let mut idx = fixed_indices.to_vec();
             idx[dim] = i;
             if let Some(&raw) = self.data.get(IxDyn(&idx)) {
-                let val = if apply_scale { self.scale_value(raw) } else { raw };
+                let val = if apply_scale {
+                    self.scale_value(raw)
+                } else {
+                    raw
+                };
                 result.push(val);
             }
         }
@@ -193,7 +201,13 @@ impl LoadedVariable {
     /// # Returns
     /// A 2D vector where `result[y][x]` corresponds to data where dim_y=y and dim_x=x.
     /// This ensures correct visual mapping: row index → Y dimension, col index → X dimension.
-    pub fn get_2d_slice(&self, dim_y: usize, dim_x: usize, fixed_indices: &[usize], apply_scale: bool) -> Vec<Vec<f64>> {
+    pub fn get_2d_slice(
+        &self,
+        dim_y: usize,
+        dim_x: usize,
+        fixed_indices: &[usize],
+        apply_scale: bool,
+    ) -> Vec<Vec<f64>> {
         let mut result = Vec::with_capacity(self.shape[dim_y]);
 
         for y in 0..self.shape[dim_y] {
@@ -204,7 +218,11 @@ impl LoadedVariable {
                 idx[dim_x] = x;
 
                 if let Some(&raw) = self.data.get(IxDyn(&idx)) {
-                    let val = if apply_scale { self.scale_value(raw) } else { raw };
+                    let val = if apply_scale {
+                        self.scale_value(raw)
+                    } else {
+                        raw
+                    };
                     row.push(val);
                 } else {
                     row.push(f64::NAN);
@@ -267,12 +285,19 @@ pub fn read_variable(file_path: &Path, var_path: &str) -> Result<LoadedVariable>
     // e.g., "/data/View_000/latitude" -> "data/View_000/latitude"
     let netcdf_path = var_path.trim_start_matches('/');
 
-    let var = file
-        .variable(netcdf_path)
-        .ok_or_else(|| CoriolisError::NetCDF(format!("Variable '{}' not found at path '{}'", var_name, netcdf_path)))?;
+    let var = file.variable(netcdf_path).ok_or_else(|| {
+        CoriolisError::NetCDF(format!(
+            "Variable '{}' not found at path '{}'",
+            var_name, netcdf_path
+        ))
+    })?;
 
     let shape: Vec<usize> = var.dimensions().iter().map(|d| d.len()).collect();
-    let dim_names: Vec<String> = var.dimensions().iter().map(|d| d.name().to_string()).collect();
+    let dim_names: Vec<String> = var
+        .dimensions()
+        .iter()
+        .map(|d| d.name().to_string())
+        .collect();
 
     // Read attributes
     let mut attributes = std::collections::HashMap::new();
@@ -284,16 +309,20 @@ pub fn read_variable(file_path: &Path, var_path: &str) -> Result<LoadedVariable>
     }
 
     // Extract scale_factor and add_offset (CF convention)
-    let scale_factor = attributes.get("scale_factor")
+    let scale_factor = attributes
+        .get("scale_factor")
         .and_then(|s| s.parse::<f64>().ok())
         .unwrap_or(1.0);
 
-    let add_offset = attributes.get("add_offset")
+    let add_offset = attributes
+        .get("add_offset")
         .and_then(|s| s.parse::<f64>().ok())
         .unwrap_or(0.0);
 
     // Get data type
-    let dtype = format!("{:?}", var.vartype()).replace("NcVariableType::", "").to_lowercase();
+    let dtype = format!("{:?}", var.vartype())
+        .replace("NcVariableType::", "")
+        .to_lowercase();
 
     // Read the RAW data into f64 array (don't apply scale/offset here)
     let data = read_variable_array(&var, &shape)?;
@@ -306,14 +335,22 @@ pub fn read_variable(file_path: &Path, var_path: &str) -> Result<LoadedVariable>
     for &raw in data.iter() {
         let v = raw * scale_factor + add_offset; // Apply scale for statistics
         if v.is_finite() {
-            if v < min { min = v; }
-            if v > max { max = v; }
+            if v < min {
+                min = v;
+            }
+            if v > max {
+                max = v;
+            }
             sum += v;
             count += 1;
         }
     }
     let min_max = if count > 0 { Some((min, max)) } else { None };
-    let mean = if count > 0 { Some(sum / count as f64) } else { None };
+    let mean = if count > 0 {
+        Some(sum / count as f64)
+    } else {
+        None
+    };
     let std = if count > 1 {
         let mean_val = mean.unwrap();
         let mut ssd = 0.0;
@@ -325,7 +362,9 @@ pub fn read_variable(file_path: &Path, var_path: &str) -> Result<LoadedVariable>
             }
         }
         Some((ssd / (count - 1) as f64).sqrt())
-    } else { None };
+    } else {
+        None
+    };
     let valid_count = count;
 
     // Try to load coordinate variables for each dimension
@@ -376,8 +415,7 @@ fn load_coordinate_variables(
             };
 
             // Try to load from same group first, then from root
-            try_load_coordinate(file, &coord_path)
-                .or_else(|| try_load_coordinate(file, dim_name))
+            try_load_coordinate(file, &coord_path).or_else(|| try_load_coordinate(file, dim_name))
         })
         .collect()
 }
@@ -398,50 +436,46 @@ fn try_load_coordinate(file: &netcdf::File, path: &str) -> Option<CoordinateVar>
         NcVariableType::Float(FloatType::F32) => {
             let vals: Vec<f32> = var.get_values(..).ok()?;
             vals.into_iter().map(|x| x as f64).collect()
-        }
+        },
         NcVariableType::Int(IntType::I64) => {
             let vals: Vec<i64> = var.get_values(..).ok()?;
             vals.into_iter().map(|x| x as f64).collect()
-        }
+        },
         NcVariableType::Int(IntType::I32) => {
             let vals: Vec<i32> = var.get_values(..).ok()?;
             vals.into_iter().map(|x| x as f64).collect()
-        }
+        },
         NcVariableType::Int(IntType::I16) => {
             let vals: Vec<i16> = var.get_values(..).ok()?;
             vals.into_iter().map(|x| x as f64).collect()
-        }
+        },
         NcVariableType::Int(IntType::U32) => {
             let vals: Vec<u32> = var.get_values(..).ok()?;
             vals.into_iter().map(|x| x as f64).collect()
-        }
+        },
         NcVariableType::Int(IntType::U16) => {
             let vals: Vec<u16> = var.get_values(..).ok()?;
             vals.into_iter().map(|x| x as f64).collect()
-        }
+        },
         _ => return None,
     };
 
     // Read units and long_name attributes
-    let units = var
-        .attribute("units")
-        .and_then(|a| {
-            use netcdf::AttributeValue;
-            match a.value().ok()? {
-                AttributeValue::Str(s) => Some(s),
-                _ => None,
-            }
-        });
+    let units = var.attribute("units").and_then(|a| {
+        use netcdf::AttributeValue;
+        match a.value().ok()? {
+            AttributeValue::Str(s) => Some(s),
+            _ => None,
+        }
+    });
 
-    let long_name = var
-        .attribute("long_name")
-        .and_then(|a| {
-            use netcdf::AttributeValue;
-            match a.value().ok()? {
-                AttributeValue::Str(s) => Some(s),
-                _ => None,
-            }
-        });
+    let long_name = var.attribute("long_name").and_then(|a| {
+        use netcdf::AttributeValue;
+        match a.value().ok()? {
+            AttributeValue::Str(s) => Some(s),
+            _ => None,
+        }
+    });
 
     Some(CoordinateVar {
         values,
@@ -450,7 +484,7 @@ fn try_load_coordinate(file: &netcdf::File, path: &str) -> Option<CoordinateVar>
     })
 }
 
-fn read_variable_array(var: &netcdf::Variable<'_>, shape: &Vec<usize>) -> Result<ArrayD<f64>> {
+fn read_variable_array(var: &netcdf::Variable<'_>, shape: &[usize]) -> Result<ArrayD<f64>> {
     let vartype = var.vartype();
 
     // Helper to build ArrayD<f64> from a Vec<f64> and the known shape
@@ -465,66 +499,64 @@ fn read_variable_array(var: &netcdf::Variable<'_>, shape: &Vec<usize>) -> Result
                 .get_values(..)
                 .map_err(|e| CoriolisError::NetCDF(format!("Failed to read f64 data: {}", e)))?;
             from_vec(values)
-        }
+        },
         NcVariableType::Float(FloatType::F32) => {
             let values: Vec<f32> = var
                 .get_values(..)
                 .map_err(|e| CoriolisError::NetCDF(format!("Failed to read f32 data: {}", e)))?;
             from_vec(values.into_iter().map(|x| x as f64).collect())
-        }
+        },
         NcVariableType::Int(IntType::I64) => {
             let values: Vec<i64> = var
                 .get_values(..)
                 .map_err(|e| CoriolisError::NetCDF(format!("Failed to read i64 data: {}", e)))?;
             from_vec(values.into_iter().map(|x| x as f64).collect())
-        }
+        },
         NcVariableType::Int(IntType::I32) => {
             let values: Vec<i32> = var
                 .get_values(..)
                 .map_err(|e| CoriolisError::NetCDF(format!("Failed to read i32 data: {}", e)))?;
             from_vec(values.into_iter().map(|x| x as f64).collect())
-        }
+        },
         NcVariableType::Int(IntType::I16) => {
             let values: Vec<i16> = var
                 .get_values(..)
                 .map_err(|e| CoriolisError::NetCDF(format!("Failed to read i16 data: {}", e)))?;
             from_vec(values.into_iter().map(|x| x as f64).collect())
-        }
+        },
         NcVariableType::Int(IntType::I8) => {
             let values: Vec<i8> = var
                 .get_values(..)
                 .map_err(|e| CoriolisError::NetCDF(format!("Failed to read i8 data: {}", e)))?;
             from_vec(values.into_iter().map(|x| x as f64).collect())
-        }
+        },
         NcVariableType::Int(IntType::U64) => {
             let values: Vec<u64> = var
                 .get_values(..)
                 .map_err(|e| CoriolisError::NetCDF(format!("Failed to read u64 data: {}", e)))?;
             from_vec(values.into_iter().map(|x| x as f64).collect())
-        }
+        },
         NcVariableType::Int(IntType::U32) => {
             let values: Vec<u32> = var
                 .get_values(..)
                 .map_err(|e| CoriolisError::NetCDF(format!("Failed to read u32 data: {}", e)))?;
             from_vec(values.into_iter().map(|x| x as f64).collect())
-        }
+        },
         NcVariableType::Int(IntType::U16) => {
             let values: Vec<u16> = var
                 .get_values(..)
                 .map_err(|e| CoriolisError::NetCDF(format!("Failed to read u16 data: {}", e)))?;
             from_vec(values.into_iter().map(|x| x as f64).collect())
-        }
+        },
         NcVariableType::Int(IntType::U8) => {
             let values: Vec<u8> = var
                 .get_values(..)
                 .map_err(|e| CoriolisError::NetCDF(format!("Failed to read u8 data: {}", e)))?;
             from_vec(values.into_iter().map(|x| x as f64).collect())
-        }
-        NcVariableType::Char | NcVariableType::String => {
-            Err(CoriolisError::NetCDF(
-                "Character/string data cannot be visualized".to_string(),
-            ))
-        }
+        },
+        NcVariableType::Char | NcVariableType::String => Err(CoriolisError::NetCDF(
+            "Character/string data cannot be visualized".to_string(),
+        )),
         _ => Err(CoriolisError::NetCDF(format!(
             "Unsupported variable type: {:?}",
             vartype

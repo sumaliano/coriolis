@@ -1,15 +1,33 @@
-# Rust
-/target
+# Build artifacts
+/target/
+
+# Logs
 *.log
-coriolis.log
-tanotly.log
-Cargo.lock
+
+# Rust backup files
 *.rs.bk
 
-# Test data
+# Test data files (exclude from repo)
 *.nc
 *.h5
 *.hdf5
 *.nc4
-!test_data/*.nc
-!test_data/*.h5
+
+# Allow test fixtures
+!tests/fixtures/*.nc
+!tests/fixtures/*.h5
+
+# IDE and editor files
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Coverage reports
+*.profraw
+coverage/

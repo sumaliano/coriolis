@@ -1,9 +1,9 @@
 //! Browser UI rendering.
 
 use super::ThemeColors;
-use crate::overlay::ui::draw_overlay;
 use crate::app::App;
 use crate::data::DataNode;
+use crate::overlay::ui::draw_overlay;
 use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
     style::{Modifier, Style},
@@ -19,7 +19,11 @@ pub(super) fn draw_browser(f: &mut Frame<'_>, app: &mut App) {
     // Main layout with status bar and key map bar
     let chunks = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([Constraint::Min(1), Constraint::Length(1), Constraint::Length(1)])
+        .constraints([
+            Constraint::Min(1),
+            Constraint::Length(1),
+            Constraint::Length(1),
+        ])
         .split(f.area());
 
     // Content area
@@ -97,7 +101,7 @@ fn draw_tree(f: &mut Frame<'_>, app: &mut App, area: Rect, colors: &ThemeColors)
                 let display_str = item.node.display_name();
 
                 // Split at first space or opening parenthesis to separate name from metadata
-                let (name_part, meta_part) = if let Some(pos) = display_str.find(|c| c == '(' || c == ' ') {
+                let (name_part, meta_part) = if let Some(pos) = display_str.find(['(', ' ']) {
                     let (n, m) = display_str.split_at(pos);
                     (n.to_string(), m.to_string())
                 } else {
@@ -107,7 +111,12 @@ fn draw_tree(f: &mut Frame<'_>, app: &mut App, area: Rect, colors: &ThemeColors)
                 let mut spans = vec![
                     Span::raw(indent),
                     Span::raw(expand_icon),
-                    Span::styled(name_part, Style::default().fg(colors.green).add_modifier(Modifier::BOLD)),
+                    Span::styled(
+                        name_part,
+                        Style::default()
+                            .fg(colors.green)
+                            .add_modifier(Modifier::BOLD),
+                    ),
                 ];
 
                 if !meta_part.is_empty() {
@@ -182,8 +191,7 @@ fn draw_status(f: &mut Frame<'_>, app: &App, area: Rect, colors: &ThemeColors) {
         app.status.clone()
     };
 
-    let paragraph =
-        Paragraph::new(text).style(Style::default().fg(colors.fg0).bg(colors.bg1));
+    let paragraph = Paragraph::new(text).style(Style::default().fg(colors.fg0).bg(colors.bg1));
 
     f.render_widget(paragraph, area);
 }
@@ -199,8 +207,8 @@ fn draw_keymap(f: &mut Frame<'_>, app: &App, area: Rect, colors: &ThemeColors) {
         "q:quit | hjkl:nav | /:search | n/N:next/prev | t:preview | p:plot | c/y:copy | T:theme | ?:help"
     };
 
-    let paragraph = Paragraph::new(keymap_text)
-        .style(Style::default().fg(colors.fg0).bg(colors.bg0));
+    let paragraph =
+        Paragraph::new(keymap_text).style(Style::default().fg(colors.fg0).bg(colors.bg0));
 
     f.render_widget(paragraph, area);
 }
@@ -282,7 +290,6 @@ fn draw_welcome(f: &mut Frame<'_>, area: Rect, colors: &ThemeColors) {
     f.render_widget(paragraph, area);
 }
 
-
 fn format_node_details(node: &DataNode, colors: &ThemeColors) -> Vec<Line<'static>> {
     let mut lines = vec![];
 
@@ -314,35 +321,34 @@ fn format_node_details(node: &DataNode, colors: &ThemeColors) -> Vec<Line<'stati
 }
 
 fn format_variable_details(node: &DataNode, colors: &ThemeColors) -> Vec<Line<'static>> {
-    let mut lines = vec![];
-
-    // Header
-    lines.push(Line::from(Span::styled(
-        node.name.clone(),
-        Style::default()
-            .fg(colors.yellow)
-            .add_modifier(Modifier::BOLD),
-    )));
-    lines.push(Line::from(""));
-
-    // Type and path
-    lines.push(Line::from(vec![
-        Span::styled("Type: ", Style::default().fg(colors.green)),
-        Span::styled("variable", Style::default().fg(colors.aqua)),
-    ]));
-    lines.push(Line::from(vec![
-        Span::styled("Path: ", Style::default().fg(colors.green)),
-        Span::styled(node.path.clone(), Style::default().fg(colors.aqua)),
-    ]));
-    lines.push(Line::from(""));
-
-    // Array Info
-    lines.push(Line::from(Span::styled(
-        "Array Info",
-        Style::default()
-            .fg(colors.yellow)
-            .add_modifier(Modifier::BOLD),
-    )));
+    // Initialize with header and basic info
+    let mut lines = vec![
+        // Header
+        Line::from(Span::styled(
+            node.name.clone(),
+            Style::default()
+                .fg(colors.yellow)
+                .add_modifier(Modifier::BOLD),
+        )),
+        Line::from(""),
+        // Type and path
+        Line::from(vec![
+            Span::styled("Type: ", Style::default().fg(colors.green)),
+            Span::styled("variable", Style::default().fg(colors.aqua)),
+        ]),
+        Line::from(vec![
+            Span::styled("Path: ", Style::default().fg(colors.green)),
+            Span::styled(node.path.clone(), Style::default().fg(colors.aqua)),
+        ]),
+        Line::from(""),
+        // Array Info
+        Line::from(Span::styled(
+            "Array Info",
+            Style::default()
+                .fg(colors.yellow)
+                .add_modifier(Modifier::BOLD),
+        )),
+    ];
 
     // Dimensions
     if let Some(dim_str) = node.metadata.get("dims") {
@@ -452,7 +458,9 @@ fn format_group_details(node: &DataNode, colors: &ThemeColors) -> Vec<Line<'stat
     lines.push(Line::from(""));
 
     // Dimensions
-    let dims: Vec<_> = node.metadata.iter()
+    let dims: Vec<_> = node
+        .metadata
+        .iter()
         .filter(|(k, _)| k.starts_with("dim_"))
         .collect();
 
@@ -473,7 +481,9 @@ fn format_group_details(node: &DataNode, colors: &ThemeColors) -> Vec<Line<'stat
     }
 
     // Variables
-    let variables: Vec<_> = node.children.iter()
+    let variables: Vec<_> = node
+        .children
+        .iter()
         .filter(|child| child.is_variable())
         .collect();
 
@@ -485,7 +495,14 @@ fn format_group_details(node: &DataNode, colors: &ThemeColors) -> Vec<Line<'stat
 
         for var in variables {
             // Variable signature
-            let mut sig = format!("  {}", var.dtype.as_ref().unwrap_or(&"unknown".to_string()).replace("NcVariableType::", "").to_lowercase());
+            let mut sig = format!(
+                "  {}",
+                var.dtype
+                    .as_ref()
+                    .unwrap_or(&"unknown".to_string())
+                    .replace("NcVariableType::", "")
+                    .to_lowercase()
+            );
             sig.push_str(&format!(" {}", var.name));
 
             // Dimensions
@@ -525,7 +542,9 @@ fn format_group_details(node: &DataNode, colors: &ThemeColors) -> Vec<Line<'stat
     }
 
     // Child groups
-    let groups: Vec<_> = node.children.iter()
+    let groups: Vec<_> = node
+        .children
+        .iter()
         .filter(|child| child.is_group())
         .collect();
 
@@ -564,4 +583,3 @@ fn format_group_details(node: &DataNode, colors: &ThemeColors) -> Vec<Line<'stat
 
     lines
 }
-

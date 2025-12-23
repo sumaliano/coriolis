@@ -53,7 +53,7 @@ pub struct HeatmapLayoutConfig {
 impl Default for HeatmapLayoutConfig {
     fn default() -> Self {
         Self {
-            pixel_width: 2,      // 2:1 aspect ratio correction
+            pixel_width: 2, // 2:1 aspect ratio correction
             colorbar_height: 1,
             colorbar_width: 50,
         }

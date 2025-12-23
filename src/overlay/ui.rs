@@ -91,13 +91,21 @@ pub fn draw_overlay(f: &mut Frame<'_>, state: &OverlayState, colors: &ThemeColor
     }
 }
 
-fn draw_header(f: &mut Frame<'_>, area: Rect, var: &LoadedVariable, state: &OverlayState, colors: &ThemeColors) {
+fn draw_header(
+    f: &mut Frame<'_>,
+    area: Rect,
+    var: &LoadedVariable,
+    state: &OverlayState,
+    colors: &ThemeColors,
+) {
     let mut lines = vec![];
 
     // First line: Variable name with optional long_name and units
     let mut title_parts = vec![Span::styled(
         var.name.clone(),
-        Style::default().fg(colors.yellow).add_modifier(Modifier::BOLD),
+        Style::default()
+            .fg(colors.yellow)
+            .add_modifier(Modifier::BOLD),
     )];
 
     if let Some(long_name) = var.long_name() {
@@ -116,10 +124,18 @@ fn draw_header(f: &mut Frame<'_>, area: Rect, var: &LoadedVariable, state: &Over
 
     // Show scale/offset indicator if applicable
     if state.has_scale_offset() {
-        let mode = if state.apply_scale_offset { "Scaled" } else { "Raw" };
+        let mode = if state.apply_scale_offset {
+            "Scaled"
+        } else {
+            "Raw"
+        };
         title_parts.push(Span::styled(
             format!(" ({})", mode),
-            Style::default().fg(if state.apply_scale_offset { colors.green } else { colors.orange }),
+            Style::default().fg(if state.apply_scale_offset {
+                colors.green
+            } else {
+                colors.orange
+            }),
         ));
     }
 
@@ -150,13 +166,11 @@ fn draw_header(f: &mut Frame<'_>, area: Rect, var: &LoadedVariable, state: &Over
         lines.push(Line::from(stats_spans));
     }
 
-    let paragraph = Paragraph::new(lines)
-        .alignment(Alignment::Center)
-        .block(
-            Block::default()
-                .borders(Borders::BOTTOM)
-                .border_style(Style::default().fg(colors.bg2)),
-        );
+    let paragraph = Paragraph::new(lines).alignment(Alignment::Center).block(
+        Block::default()
+            .borders(Borders::BOTTOM)
+            .border_style(Style::default().fg(colors.bg2)),
+    );
 
     f.render_widget(paragraph, area);
 }
@@ -218,12 +232,18 @@ fn build_stats_spans<'a>(var: &LoadedVariable, colors: &ThemeColors) -> Vec<Span
 /// Format a statistic value with smart precision.
 fn format_stat_value(val: f64) -> String {
     if !val.is_finite() {
-        return if val.is_nan() { "NaN".to_string() } else if val.is_sign_positive() { "+Inf".to_string() } else { "-Inf".to_string() };
+        return if val.is_nan() {
+            "NaN".to_string()
+        } else if val.is_sign_positive() {
+            "+Inf".to_string()
+        } else {
+            "-Inf".to_string()
+        };
     }
     let abs_val = val.abs();
     if abs_val == 0.0 {
         "0".to_string()
-    } else if abs_val >= 1e6 || abs_val < 1e-3 {
+    } else if !(1e-3..1e6).contains(&abs_val) {
         format!("{:.3e}", val)
     } else if abs_val >= 100.0 {
         format!("{:.2}", val)
@@ -245,7 +265,8 @@ fn draw_table_view(
     let visible_rows = (area.height as usize).saturating_sub(4); // Account for border and header
     let col_width = 12;
     let row_header_width = 10; // Wider for coordinate labels
-    let visible_cols = ((area.width as usize).saturating_sub(row_header_width + 2) / col_width).max(1).min(20);
+    let visible_cols =
+        ((area.width as usize).saturating_sub(row_header_width + 2) / col_width).clamp(1, 20);
 
     let start_row = state.scroll.row;
     let start_col = state.scroll.col;
@@ -262,10 +283,16 @@ fn draw_table_view(
     let apply_scale = state.apply_scale_offset;
     let data_slice = if var.ndim() == 0 {
         let raw = var.data.iter().next().copied().unwrap_or(f64::NAN);
-        let val = if apply_scale { var.scale_value(raw) } else { raw };
+        let val = if apply_scale {
+            var.scale_value(raw)
+        } else {
+            raw
+        };
         vec![vec![val]]
     } else if var.ndim() == 1 {
-        let data: Vec<f64> = var.data.iter()
+        let data: Vec<f64> = var
+            .data
+            .iter()
             .map(|&v| if apply_scale { var.scale_value(v) } else { v })
             .collect();
         vec![data]
@@ -287,7 +314,8 @@ fn draw_table_view(
         } else {
             format!("{}", row_idx)
         };
-        cells.push(Cell::from(format!("{:>9}", row_label)).style(Style::default().fg(colors.green)));
+        cells
+            .push(Cell::from(format!("{:>9}", row_label)).style(Style::default().fg(colors.green)));
 
         for col_idx in start_col..end_col {
             let value = if var.ndim() <= 1 {
@@ -316,8 +344,11 @@ fn draw_table_view(
             format!("{}", col_idx)
         };
         header_cells.push(
-            Cell::from(format!("{:>10}", col_label))
-                .style(Style::default().fg(colors.green).add_modifier(Modifier::BOLD)),
+            Cell::from(format!("{:>10}", col_label)).style(
+                Style::default()
+                    .fg(colors.green)
+                    .add_modifier(Modifier::BOLD),
+            ),
         );
     }
 
@@ -328,9 +359,20 @@ fn draw_table_view(
     }
 
     // Build title with dimension info
-    let row_dim_name = var.dim_names.get(row_dim).map(|s| s.as_str()).unwrap_or("row");
-    let col_dim_name = var.dim_names.get(col_dim).map(|s| s.as_str()).unwrap_or("col");
-    let title = format!(" {} | Rows: {} | Cols: {} ", var.name, row_dim_name, col_dim_name);
+    let row_dim_name = var
+        .dim_names
+        .get(row_dim)
+        .map(|s| s.as_str())
+        .unwrap_or("row");
+    let col_dim_name = var
+        .dim_names
+        .get(col_dim)
+        .map(|s| s.as_str())
+        .unwrap_or("col");
+    let title = format!(
+        " {} | Rows: {} | Cols: {} ",
+        var.name, row_dim_name, col_dim_name
+    );
 
     let table = Table::new(rows, widths)
         .header(Row::new(header_cells).style(Style::default().add_modifier(Modifier::BOLD)))
@@ -376,7 +418,8 @@ fn draw_plot1d_view(
 
     let apply_scale = state.apply_scale_offset;
     let data = if var.ndim() <= 1 {
-        var.data.iter()
+        var.data
+            .iter()
             .map(|&v| if apply_scale { var.scale_value(v) } else { v })
             .collect::<Vec<f64>>()
     } else {
@@ -504,7 +547,8 @@ fn draw_plot1d_view(
     // Add cursor as a vertical line
     let cursor_idx = state.plot_cursor;
     let cursor_x = if has_coords {
-        var.get_coord_value(slice_dim, cursor_idx).unwrap_or(cursor_idx as f64)
+        var.get_coord_value(slice_dim, cursor_idx)
+            .unwrap_or(cursor_idx as f64)
     } else {
         cursor_idx as f64
     };
@@ -593,7 +637,7 @@ fn format_axis_label(val: f64) -> String {
     let abs_val = val.abs();
     if abs_val == 0.0 {
         "0".to_string()
-    } else if abs_val >= 1e5 || abs_val < 1e-2 {
+    } else if !(1e-2..1e5).contains(&abs_val) {
         format!("{:.1e}", val)
     } else if abs_val >= 100.0 {
         format!("{:.0}", val)
@@ -645,13 +689,23 @@ fn draw_heatmap_view(
     let (min_val, max_val) = (auto_min, auto_max);
 
     let mut range = max_val - min_val;
-    if range.abs() < 1e-10 { range = 1.0; }
+    if range.abs() < 1e-10 {
+        range = 1.0;
+    }
 
     let rows = data_2d.len();
     let cols = data_2d[0].len();
 
-    let dim1_name = var.dim_names.get(row_dim).map(|s| s.as_str()).unwrap_or("Y");
-    let dim2_name = var.dim_names.get(col_dim).map(|s| s.as_str()).unwrap_or("X");
+    let dim1_name = var
+        .dim_names
+        .get(row_dim)
+        .map(|s| s.as_str())
+        .unwrap_or("Y");
+    let dim2_name = var
+        .dim_names
+        .get(col_dim)
+        .map(|s| s.as_str())
+        .unwrap_or("X");
 
     // Build cursor readout for title (data is already scaled/unscaled)
     let cursor_row = state.heat_cursor_row.min(rows.saturating_sub(1));
@@ -699,12 +753,16 @@ fn draw_heatmap_view(
         x: inner.x + left_margin,
         y: inner.y + colorbar_height,
         width: inner.width.saturating_sub(left_margin),
-        height: inner.height.saturating_sub(colorbar_height + axis_label_height),
+        height: inner
+            .height
+            .saturating_sub(colorbar_height + axis_label_height),
     };
 
     // Render colorbar at top with units
     let colorbar_width = 40.min((inner.width as usize).saturating_sub(20));
-    let colorbar_start = inner.x + left_margin + ((heatmap_area.width as usize).saturating_sub(colorbar_width)) as u16 / 2;
+    let colorbar_start = inner.x
+        + left_margin
+        + ((heatmap_area.width as usize).saturating_sub(colorbar_width)) as u16 / 2;
 
     for i in 0..colorbar_width {
         let t = i as f64 / colorbar_width as f64;
@@ -764,7 +822,9 @@ fn draw_heatmap_view(
     let max_w_chars = heatmap_area.width as usize;
     let pixel_width = 2;
     let max_w = max_w_chars / pixel_width;
-    if max_h == 0 || max_w == 0 { return; }
+    if max_h == 0 || max_w == 0 {
+        return;
+    }
 
     // Terminal characters have an aspect ratio (typically ~2:1 height:width)
     // We use pixel_width=2 to make square pixels, accounting for this
@@ -802,15 +862,21 @@ fn draw_heatmap_view(
             // Simplified path: no value transform (e.g., log) — use raw value
             let val = raw_val;
             let color = if val.is_finite() {
-                state.color_palette.color(((val - min_val) / range).clamp(0.0, 1.0))
+                state
+                    .color_palette
+                    .color(((val - min_val) / range).clamp(0.0, 1.0))
             } else {
                 colors.gray
             };
             for i in 0..pixel_width {
                 let screen_x = heatmap_area.x + offset_x_chars + (px * pixel_width + i) as u16;
                 let screen_y = heatmap_area.y + offset_y + y as u16;
-                if screen_x >= heatmap_area.x + heatmap_area.width { break; }
-                if screen_y >= heatmap_area.y + heatmap_area.height { break; }
+                if screen_x >= heatmap_area.x + heatmap_area.width {
+                    break;
+                }
+                if screen_y >= heatmap_area.y + heatmap_area.height {
+                    break;
+                }
                 if let Some(cell) = f.buffer_mut().cell_mut((screen_x, screen_y)) {
                     if val.is_finite() {
                         cell.set_char('█').set_fg(color);
@@ -826,7 +892,9 @@ fn draw_heatmap_view(
     // visually adjacent when the heatmap is horizontally centered.
     let y_label_positions = [0, disp_rows / 2, disp_rows.saturating_sub(1)];
     for &y_pos in &y_label_positions {
-        if y_pos >= disp_rows { continue; }
+        if y_pos >= disp_rows {
+            continue;
+        }
         let data_row = (y_pos as f64 * row_step).floor() as usize;
         let data_row = data_row.min(rows - 1);
         let label = var.get_coord_label(row_dim, data_row);
@@ -846,7 +914,8 @@ fn draw_heatmap_view(
 
             for (i, ch) in label_short.chars().enumerate() {
                 let x = label_start_x + i as u16;
-                if x < heatmap_start_x { // ensure we don’t overwrite heatmap
+                if x < heatmap_start_x {
+                    // ensure we don’t overwrite heatmap
                     if let Some(cell) = f.buffer_mut().cell_mut((x, screen_y)) {
                         cell.set_char(ch).set_fg(colors.green);
                     }
@@ -860,7 +929,9 @@ fn draw_heatmap_view(
     if x_label_y < inner.y + inner.height {
         let x_label_positions = [0, disp_cols / 2, disp_cols.saturating_sub(1)];
         for &x_pos in &x_label_positions {
-            if x_pos >= disp_cols { continue; }
+            if x_pos >= disp_cols {
+                continue;
+            }
             let data_col = (x_pos as f64 * col_step).floor() as usize;
             let data_col = data_col.min(cols - 1);
             let label = var.get_coord_label(col_dim, data_col);
@@ -884,7 +955,9 @@ fn draw_heatmap_view(
     let cx = cx.min(disp_cols.saturating_sub(1));
     let screen_y = heatmap_area.y + offset_y + cy as u16;
     let screen_x = heatmap_area.x + offset_x_chars + (cx * pixel_width) as u16;
-    if screen_x < heatmap_area.x + heatmap_area.width && screen_y < heatmap_area.y + heatmap_area.height {
+    if screen_x < heatmap_area.x + heatmap_area.width
+        && screen_y < heatmap_area.y + heatmap_area.height
+    {
         for i in 0..pixel_width {
             if let Some(cell) = f.buffer_mut().cell_mut((screen_x + i as u16, screen_y)) {
                 cell.set_char('┼').set_fg(colors.yellow);
@@ -903,15 +976,17 @@ fn draw_dimension_selectors(
     let mut lines = Vec::new();
 
     // First line: Display dimensions with coordinate range
-    let mut display_spans = vec![
-        Span::styled("Display: ", Style::default().fg(colors.green)),
-    ];
+    let mut display_spans = vec![Span::styled("Display: ", Style::default().fg(colors.green))];
 
     match state.view_mode {
         ViewMode::Plot1D => {
             // 1D plot shows one dimension with range
             let dim_idx = state.slicing.display_dims.0;
-            let dim_name = var.dim_names.get(dim_idx).map(|s| s.as_str()).unwrap_or("?");
+            let dim_name = var
+                .dim_names
+                .get(dim_idx)
+                .map(|s| s.as_str())
+                .unwrap_or("?");
             let dim_size = var.shape.get(dim_idx).copied().unwrap_or(0);
 
             // Show coordinate range if available
@@ -927,11 +1002,18 @@ fn draw_dimension_selectors(
                 format!("{}[{}]{}", dim_name, dim_size, range_str),
                 Style::default().fg(colors.aqua),
             ));
-        }
+        },
         ViewMode::Table | ViewMode::Heatmap => {
             // 2D views show both dimensions
-            for (label, dim_idx) in [("Y", state.slicing.display_dims.0), ("X", state.slicing.display_dims.1)] {
-                let dim_name = var.dim_names.get(dim_idx).map(|s| s.as_str()).unwrap_or("?");
+            for (label, dim_idx) in [
+                ("Y", state.slicing.display_dims.0),
+                ("X", state.slicing.display_dims.1),
+            ] {
+                let dim_name = var
+                    .dim_names
+                    .get(dim_idx)
+                    .map(|s| s.as_str())
+                    .unwrap_or("?");
                 let dim_size = var.shape.get(dim_idx).copied().unwrap_or(0);
 
                 display_spans.push(Span::styled(
@@ -939,15 +1021,13 @@ fn draw_dimension_selectors(
                     Style::default().fg(colors.aqua),
                 ));
             }
-        }
+        },
     }
 
     lines.push(Line::from(display_spans));
 
     // Second line: Slice selectors with coordinate values
-    let mut slice_spans = vec![
-        Span::styled("Slices: ", Style::default().fg(colors.green)),
-    ];
+    let mut slice_spans = vec![Span::styled("Slices: ", Style::default().fg(colors.green))];
 
     let is_1d = matches!(state.view_mode, ViewMode::Plot1D);
 
@@ -1005,25 +1085,36 @@ fn draw_dimension_selectors(
         lines.push(Line::from(slice_spans));
     }
 
-    let paragraph = Paragraph::new(lines)
-        .alignment(Alignment::Center)
-        .block(
-            Block::default()
-                .borders(Borders::TOP)
-                .border_style(Style::default().fg(colors.bg2)),
-        );
+    let paragraph = Paragraph::new(lines).alignment(Alignment::Center).block(
+        Block::default()
+            .borders(Borders::TOP)
+            .border_style(Style::default().fg(colors.bg2)),
+    );
 
     f.render_widget(paragraph, area);
 }
 
 fn draw_footer(f: &mut Frame<'_>, area: Rect, state: &OverlayState, colors: &ThemeColors) {
     // Build help string - add O for scale/offset if applicable
-    let scale_hint = if state.has_scale_offset() { " | O: Raw/Scaled" } else { "" };
+    let scale_hint = if state.has_scale_offset() {
+        " | O: Raw/Scaled"
+    } else {
+        ""
+    };
 
     let help = match state.view_mode {
-        ViewMode::Plot1D => format!("Tab: View | C: Palette | Y: Dim | S: Slice | PgUp/Dn: Slice | ←/→: Cursor{} | Esc", scale_hint),
-        ViewMode::Table => format!("Tab: View | C: Palette | R: Rotate | Y/X: Dims | S: Slice | Arrows: Pan{} | Esc", scale_hint),
-        ViewMode::Heatmap => format!("Tab: View | C: Palette | R: Rotate | Y/X: Dims | S: Slice | Arrows: Move{} | Esc", scale_hint),
+        ViewMode::Plot1D => format!(
+            "Tab: View | C: Palette | Y: Dim | S: Slice | PgUp/Dn: Slice | ←/→: Cursor{} | Esc",
+            scale_hint
+        ),
+        ViewMode::Table => format!(
+            "Tab: View | C: Palette | R: Rotate | Y/X: Dims | S: Slice | Arrows: Pan{} | Esc",
+            scale_hint
+        ),
+        ViewMode::Heatmap => format!(
+            "Tab: View | C: Palette | R: Rotate | Y/X: Dims | S: Slice | Arrows: Move{} | Esc",
+            scale_hint
+        ),
     };
     let paragraph = Paragraph::new(help)
         .style(Style::default().fg(colors.green))
@@ -1035,7 +1126,9 @@ fn draw_error(f: &mut Frame<'_>, area: Rect, error: &str, colors: &ThemeColors) 
     let lines = vec![
         Line::from(Span::styled(
             "Error Loading Variable",
-            Style::default().fg(colors.yellow).add_modifier(Modifier::BOLD),
+            Style::default()
+                .fg(colors.yellow)
+                .add_modifier(Modifier::BOLD),
         )),
         Line::from(""),
         Line::from(Span::styled(error, Style::default().fg(colors.fg0))),

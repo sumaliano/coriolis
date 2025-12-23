@@ -1,7 +1,7 @@
 //! Application state and logic.
 
-use std::path::PathBuf;
 use std::fs;
+use std::path::PathBuf;
 
 use crate::data::{read_variable, DataNode, DataReader, DatasetInfo};
 use crate::navigation::{SearchState, TreeState};
@@ -118,19 +118,19 @@ impl App {
                 app.current_dir = path;
                 app.load_directory();
                 app.file_browser_mode = true;
-            }
+            },
             Some(path) if path.is_file() => {
                 // File provided, load it
                 app.load_file(path);
-            }
+            },
             None => {
                 // No path provided, show browser
                 app.load_directory();
                 app.file_browser_mode = true;
-            }
+            },
             _ => {
                 app.error_message = Some("Invalid path provided".to_string());
-            }
+            },
         }
 
         app
@@ -154,7 +154,7 @@ impl App {
                 self.status = "Error resolving file path".to_string();
                 self.loading = false;
                 return;
-            }
+            },
         };
 
         match DataReader::read_file(&canonical_path) {
@@ -163,7 +163,8 @@ impl App {
                 self.tree_cursor.build_from_dataset(&dataset);
                 self.status = format!(
                     "{} loaded",
-                    canonical_path.file_name()
+                    canonical_path
+                        .file_name()
                         .map(|n| n.to_string_lossy().to_string())
                         .unwrap_or_else(|| "file".to_string())
                 );
@@ -218,7 +219,7 @@ impl App {
             None => {
                 self.status = "No node selected".to_string();
                 return;
-            }
+            },
         };
 
         if !node.is_variable() {
@@ -232,7 +233,7 @@ impl App {
             None => {
                 self.status = "No file loaded".to_string();
                 return;
-            }
+            },
         };
 
         self.status = format!("Loading {}...", node.name);
@@ -241,11 +242,12 @@ impl App {
             Ok(loaded_var) => {
                 self.overlay.load_variable(loaded_var);
                 self.status = format!("Loaded {}", node.name);
-            }
+            },
             Err(e) => {
-                self.overlay.set_error(format!("Failed to load variable: {}", e));
+                self.overlay
+                    .set_error(format!("Failed to load variable: {}", e));
                 self.status = format!("Error loading {}", node.name);
-            }
+            },
         }
     }
 
@@ -286,12 +288,12 @@ impl App {
         self.file_entries.clear();
 
         // Add parent directory entry if not at root
-        if self.current_dir.parent().is_some() {
+        if let Some(parent) = self.current_dir.parent() {
             self.file_entries.push(FileEntry {
-                path: self.current_dir.parent().unwrap().to_path_buf(),
+                path: parent.to_path_buf(),
                 name: "..".to_string(),
                 is_dir: true,
-                is_symlink: self.current_dir.parent().unwrap().is_symlink(),
+                is_symlink: parent.is_symlink(),
             });
         }
 
@@ -310,14 +312,11 @@ impl App {
                     }
 
                     // Get symlink status using file_type (doesn't follow symlinks)
-                    let is_symlink = entry.file_type()
-                        .map(|t| t.is_symlink())
-                        .unwrap_or(false);
+                    let is_symlink = entry.file_type().map(|t| t.is_symlink()).unwrap_or(false);
 
                     // Try to get metadata (follows symlinks to check target type)
                     // If this fails (broken symlink, permissions, etc.), try symlink_metadata as fallback
-                    let metadata = entry.metadata()
-                        .or_else(|_| fs::symlink_metadata(&path));
+                    let metadata = entry.metadata().or_else(|_| fs::symlink_metadata(&path));
 
                     match metadata {
                         Ok(meta) => {
@@ -339,12 +338,12 @@ impl App {
                                     }
                                 }
                             }
-                        }
+                        },
                         Err(_) => {
                             // If we can't get any metadata, skip this entry
                             // (this is rare and usually indicates serious permission issues)
                             continue;
-                        }
+                        },
                     }
                 }
 
@@ -357,11 +356,11 @@ impl App {
                 self.file_entries.extend(files);
 
                 self.status = format!("Browsing: {}", self.current_dir.display());
-            }
+            },
             Err(e) => {
                 self.error_message = Some(format!("Failed to read directory: {}", e));
                 self.status = "Error reading directory".to_string();
-            }
+            },
         }
 
         // Reset cursor and scroll
@@ -389,7 +388,8 @@ impl App {
             // If loading failed, return to browser mode
             if self.error_message.is_some() {
                 self.file_browser_mode = true;
-                self.status = "Error loading file (press q to quit, navigate to try another)".to_string();
+                self.status =
+                    "Error loading file (press q to quit, navigate to try another)".to_string();
             }
         }
     }
@@ -428,7 +428,8 @@ impl App {
     /// Open file browser starting at the current file's directory.
     pub fn open_file_browser_at_current(&mut self) {
         // Get the directory of the current file, or use current working directory
-        let start_dir = self.file_path
+        let start_dir = self
+            .file_path
             .as_ref()
             .and_then(|p| p.parent())
             .map(|p| p.to_path_buf())

@@ -7,8 +7,17 @@ authors = ["Coriolis Contributors"]
 description = "A fast, terminal-based netCDF data viewer with vim-style navigation"
 readme = "README.md"
 license = "MIT"
-keywords = ["netcdf", "tui", "scientific", "data-viewer"]
+repository = "https://github.com/jsilva/coriolis"
+homepage = "https://github.com/jsilva/coriolis"
+documentation = "https://docs.rs/coriolis"
+keywords = ["netcdf", "tui", "scientific", "data-viewer", "hdf5"]
 categories = ["command-line-utilities", "science", "visualization"]
+exclude = [
+    ".github/",
+    "tests/",
+    "*.nc",
+    ".gitignore",
+]
 
 [[bin]]
 name = "coriolis"

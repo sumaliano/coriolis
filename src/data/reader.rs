@@ -67,11 +67,8 @@ impl DataReader {
             format!("{}/{}", parent_path, group_name)
         };
 
-        let mut group_node = DataNode::new(
-            group_name.to_string(),
-            group_path.clone(),
-            NodeType::Group,
-        );
+        let mut group_node =
+            DataNode::new(group_name.to_string(), group_path.clone(), NodeType::Group);
 
         // Read group attributes
         for attr in group.attributes() {
@@ -109,11 +106,7 @@ impl DataReader {
             format!("{}/{}", parent_path, var_name)
         };
 
-        let mut var_node = DataNode::new(
-            var_name.to_string(),
-            var_path,
-            NodeType::Variable,
-        );
+        let mut var_node = DataNode::new(var_name.to_string(), var_path, NodeType::Variable);
 
         // Get shape and type
         var_node.shape = Some(
