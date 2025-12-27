@@ -924,8 +924,8 @@ fn draw_heatmap_view(
         }
     }
 
-    // Draw X-axis labels (bottom)
-    let x_label_y = heatmap_area.y + heatmap_area.height;
+    // Draw X-axis labels (bottom) - position immediately after the actual heatmap pixels
+    let x_label_y = heatmap_area.y + offset_y + disp_rows as u16;
     if x_label_y < inner.y + inner.height {
         let x_label_positions = [0, disp_cols / 2, disp_cols.saturating_sub(1)];
         for &x_pos in &x_label_positions {
