@@ -130,7 +130,6 @@ pub struct ThemeColors {
     /// Primary foreground (light1 or dark1).
     pub fg0: Color,
     /// Secondary foreground (light2 or dark2).
-    #[allow(dead_code)]
     pub fg1: Color,
 
     // Accent colors
@@ -141,21 +140,16 @@ pub struct ThemeColors {
     /// Aqua accent.
     pub aqua: Color,
     /// Orange accent.
-    #[allow(dead_code)]
     pub orange: Color,
     /// Red accent.
-    #[allow(dead_code)]
     pub red: Color,
     /// Blue accent.
-    #[allow(dead_code)]
     pub blue: Color,
     /// Purple accent.
-    #[allow(dead_code)]
     pub purple: Color,
 
     // Neutral gray
     /// Gray color.
-    #[allow(dead_code)]
     pub gray: Color,
 }
 

@@ -323,7 +323,7 @@ fn format_node_details(node: &DataNode, colors: &ThemeColors) -> Vec<Line<'stati
 fn format_variable_details(node: &DataNode, colors: &ThemeColors) -> Vec<Line<'static>> {
     // Initialize with header and basic info
     let mut lines = vec![
-        // Header
+        // Header - variable name in yellow bold
         Line::from(Span::styled(
             node.name.clone(),
             Style::default()
@@ -333,56 +333,66 @@ fn format_variable_details(node: &DataNode, colors: &ThemeColors) -> Vec<Line<'s
         Line::from(""),
         // Type and path
         Line::from(vec![
-            Span::styled("Type: ", Style::default().fg(colors.green)),
-            Span::styled("variable", Style::default().fg(colors.aqua)),
+            Span::styled("Type: ", Style::default().fg(colors.blue)),
+            Span::styled("variable", Style::default().fg(colors.purple)),
         ]),
         Line::from(vec![
-            Span::styled("Path: ", Style::default().fg(colors.green)),
-            Span::styled(node.path.clone(), Style::default().fg(colors.aqua)),
+            Span::styled("Path: ", Style::default().fg(colors.blue)),
+            Span::styled(node.path.clone(), Style::default().fg(colors.gray)),
         ]),
         Line::from(""),
-        // Array Info
+        // Array Info section header
         Line::from(Span::styled(
             "Array Info",
             Style::default()
-                .fg(colors.yellow)
+                .fg(colors.orange)
                 .add_modifier(Modifier::BOLD),
         )),
     ];
 
-    // Dimensions
+    // Dimensions - use aqua for dimension info
     if let Some(dim_str) = node.metadata.get("dims") {
         if !dim_str.is_empty() {
             let dims: Vec<&str> = dim_str.split(", ").collect();
             if let Some(shape) = &node.shape {
-                let mut dim_info = Vec::new();
+                let mut dim_spans = vec![Span::styled(
+                    "  Dimensions: ",
+                    Style::default().fg(colors.green),
+                )];
                 for (i, dim_name) in dims.iter().enumerate() {
+                    if i > 0 {
+                        dim_spans.push(Span::styled(" x ", Style::default().fg(colors.fg1)));
+                    }
                     if let Some(&size) = shape.get(i) {
-                        dim_info.push(format!("{}={}", dim_name, size));
+                        dim_spans.push(Span::styled(
+                            (*dim_name).to_string(),
+                            Style::default().fg(colors.aqua),
+                        ));
+                        dim_spans.push(Span::styled(
+                            format!("={}", size),
+                            Style::default().fg(colors.purple),
+                        ));
                     }
                 }
-                lines.push(Line::from(vec![
-                    Span::styled("Dimensions: ", Style::default().fg(colors.green)),
-                    Span::styled(dim_info.join(", "), Style::default().fg(colors.aqua)),
-                ]));
+                lines.push(Line::from(dim_spans));
             }
         }
     }
 
-    // Type
+    // Data type - use blue for label, purple for value
     if let Some(dtype) = &node.dtype {
         let clean_type = dtype.replace("NcVariableType::", "").to_lowercase();
         lines.push(Line::from(vec![
-            Span::styled("Type: ", Style::default().fg(colors.green)),
-            Span::styled(clean_type, Style::default().fg(colors.aqua)),
+            Span::styled("  Data type: ", Style::default().fg(colors.green)),
+            Span::styled(clean_type, Style::default().fg(colors.orange)),
         ]));
     }
 
-    // Size
+    // Size - use green for label, aqua for value
     if let Some(shape) = &node.shape {
         let total: usize = shape.iter().product();
         lines.push(Line::from(vec![
-            Span::styled("Size: ", Style::default().fg(colors.green)),
+            Span::styled("  Size: ", Style::default().fg(colors.green)),
             Span::styled(
                 format!("{} elements", format_number(total)),
                 Style::default().fg(colors.aqua),
@@ -392,20 +402,21 @@ fn format_variable_details(node: &DataNode, colors: &ThemeColors) -> Vec<Line<'s
 
     lines.push(Line::from(""));
 
-    // Attributes
+    // Attributes section
     if !node.attributes.is_empty() {
         lines.push(Line::from(Span::styled(
-            "Attributes:",
+            "Attributes",
             Style::default()
-                .fg(colors.yellow)
+                .fg(colors.orange)
                 .add_modifier(Modifier::BOLD),
         )));
 
         for (key, value) in &node.attributes {
-            lines.push(Line::from(Span::styled(
-                format!("  :{} = {};", key, value),
-                Style::default().fg(colors.aqua),
-            )));
+            lines.push(Line::from(vec![
+                Span::styled(format!("  :{}", key), Style::default().fg(colors.purple)),
+                Span::styled(" = ", Style::default().fg(colors.fg1)),
+                Span::styled(format!("{};", value), Style::default().fg(colors.aqua)),
+            ]));
         }
 
         lines.push(Line::from(""));
@@ -413,14 +424,24 @@ fn format_variable_details(node: &DataNode, colors: &ThemeColors) -> Vec<Line<'s
 
     // Data preview note
     lines.push(Line::from(Span::styled(
-        "Data Preview (press p to view)",
+        "Actions",
         Style::default()
-            .fg(colors.yellow)
+            .fg(colors.orange)
             .add_modifier(Modifier::BOLD),
     )));
+    lines.push(Line::from(vec![
+        Span::styled("  Press ", Style::default().fg(colors.fg0)),
+        Span::styled(
+            "p",
+            Style::default()
+                .fg(colors.yellow)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::styled(" to open data viewer", Style::default().fg(colors.fg0)),
+    ]));
     lines.push(Line::from(Span::styled(
-        "Statistics and sample values available after loading...",
-        Style::default().fg(colors.fg0),
+        "  Statistics and visualizations available",
+        Style::default().fg(colors.gray),
     )));
 
     lines
@@ -441,23 +462,27 @@ fn format_number(n: usize) -> String {
 fn format_group_details(node: &DataNode, colors: &ThemeColors) -> Vec<Line<'static>> {
     let mut lines = vec![];
 
-    // Group header
+    // Header - group name in yellow bold (same format as variables)
     lines.push(Line::from(Span::styled(
-        format!("Group \"{}\"", node.name),
+        node.name.clone(),
         Style::default()
             .fg(colors.yellow)
             .add_modifier(Modifier::BOLD),
     )));
     lines.push(Line::from(""));
 
-    // Full path
-    lines.push(Line::from(Span::styled(
-        format!("Group full name: {}", node.path),
-        Style::default().fg(colors.fg0),
-    )));
+    // Type and path (same format as variables)
+    lines.push(Line::from(vec![
+        Span::styled("Type: ", Style::default().fg(colors.blue)),
+        Span::styled("group", Style::default().fg(colors.purple)),
+    ]));
+    lines.push(Line::from(vec![
+        Span::styled("Path: ", Style::default().fg(colors.blue)),
+        Span::styled(node.path.clone(), Style::default().fg(colors.gray)),
+    ]));
     lines.push(Line::from(""));
 
-    // Dimensions
+    // Dimensions section
     let dims: Vec<_> = node
         .metadata
         .iter()
@@ -466,21 +491,24 @@ fn format_group_details(node: &DataNode, colors: &ThemeColors) -> Vec<Line<'stat
 
     if !dims.is_empty() {
         lines.push(Line::from(Span::styled(
-            "dimensions:",
-            Style::default().fg(colors.yellow),
+            "Dimensions",
+            Style::default()
+                .fg(colors.orange)
+                .add_modifier(Modifier::BOLD),
         )));
 
         for (key, value) in dims {
             let dim_name = key.strip_prefix("dim_").unwrap_or(key);
-            lines.push(Line::from(Span::styled(
-                format!("  {} = {};", dim_name, value),
-                Style::default().fg(colors.aqua),
-            )));
+            lines.push(Line::from(vec![
+                Span::styled(format!("  {}", dim_name), Style::default().fg(colors.aqua)),
+                Span::styled(" = ", Style::default().fg(colors.fg1)),
+                Span::styled(format!("{}", value), Style::default().fg(colors.purple)),
+            ]));
         }
         lines.push(Line::from(""));
     }
 
-    // Variables
+    // Variables section
     let variables: Vec<_> = node
         .children
         .iter()
@@ -489,59 +517,64 @@ fn format_group_details(node: &DataNode, colors: &ThemeColors) -> Vec<Line<'stat
 
     if !variables.is_empty() {
         lines.push(Line::from(Span::styled(
-            "variables:",
-            Style::default().fg(colors.yellow),
+            format!("Variables ({})", variables.len()),
+            Style::default()
+                .fg(colors.orange)
+                .add_modifier(Modifier::BOLD),
         )));
 
         for var in variables {
-            // Variable signature
-            let mut sig = format!(
-                "  {}",
-                var.dtype
-                    .as_ref()
-                    .unwrap_or(&"unknown".to_string())
-                    .replace("NcVariableType::", "")
-                    .to_lowercase()
-            );
-            sig.push_str(&format!(" {}", var.name));
+            // Build variable line with colorful parts
+            let dtype = var
+                .dtype
+                .as_ref()
+                .map(|d| d.replace("NcVariableType::", "").to_lowercase())
+                .unwrap_or_else(|| "unknown".to_string());
 
-            // Dimensions
+            let mut var_spans = vec![
+                Span::styled("  ", Style::default()),
+                Span::styled(dtype, Style::default().fg(colors.blue)),
+                Span::styled(" ", Style::default()),
+                Span::styled(var.name.clone(), Style::default().fg(colors.green)),
+            ];
+
+            // Add dimensions
             if let Some(dim_str) = var.metadata.get("dims") {
                 if !dim_str.is_empty() {
                     let dims: Vec<&str> = dim_str.split(", ").collect();
                     if let Some(shape) = &var.shape {
-                        let mut dim_info = Vec::new();
-                        for (i, dim_name) in dims.iter().enumerate() {
-                            if let Some(&size) = shape.get(i) {
-                                dim_info.push(format!("{}={}", dim_name, size));
-                            }
-                        }
+                        let dim_info: Vec<String> = dims
+                            .iter()
+                            .enumerate()
+                            .filter_map(|(i, dim_name)| {
+                                shape.get(i).map(|&size| format!("{}={}", dim_name, size))
+                            })
+                            .collect();
                         if !dim_info.is_empty() {
-                            sig.push_str(&format!("({})", dim_info.join(", ")));
+                            var_spans.push(Span::styled(
+                                format!("({})", dim_info.join(", ")),
+                                Style::default().fg(colors.purple),
+                            ));
                         }
                     }
                 }
             }
-            sig.push(';');
 
-            lines.push(Line::from(Span::styled(
-                sig,
-                Style::default().fg(colors.aqua),
-            )));
+            lines.push(Line::from(var_spans));
 
-            // Variable attributes
+            // Variable attributes (indented, in aqua)
             for (key, value) in &var.attributes {
-                lines.push(Line::from(Span::styled(
-                    format!("    :{} = {};", key, value),
-                    Style::default().fg(colors.green),
-                )));
+                lines.push(Line::from(vec![
+                    Span::styled(format!("    :{}", key), Style::default().fg(colors.gray)),
+                    Span::styled(" = ", Style::default().fg(colors.fg1)),
+                    Span::styled(format!("{}", value), Style::default().fg(colors.aqua)),
+                ]));
             }
-
-            lines.push(Line::from(""));
         }
+        lines.push(Line::from(""));
     }
 
-    // Child groups
+    // Child groups section
     let groups: Vec<_> = node
         .children
         .iter()
@@ -549,35 +582,41 @@ fn format_group_details(node: &DataNode, colors: &ThemeColors) -> Vec<Line<'stat
         .collect();
 
     if !groups.is_empty() {
+        lines.push(Line::from(Span::styled(
+            format!("Subgroups ({})", groups.len()),
+            Style::default()
+                .fg(colors.orange)
+                .add_modifier(Modifier::BOLD),
+        )));
+
         for group in groups {
-            lines.push(Line::from(Span::styled(
-                format!("group: {} {{", group.name),
-                Style::default().fg(colors.yellow),
-            )));
-            lines.push(Line::from(Span::styled(
-                format!("  {} child items...", group.children.len()),
-                Style::default().fg(colors.fg0),
-            )));
-            lines.push(Line::from(Span::styled(
-                "}",
-                Style::default().fg(colors.yellow),
-            )));
-            lines.push(Line::from(""));
+            lines.push(Line::from(vec![
+                Span::styled("  ", Style::default()),
+                Span::styled(group.name.clone(), Style::default().fg(colors.yellow)),
+                Span::styled(
+                    format!(" ({} items)", group.children.len()),
+                    Style::default().fg(colors.gray),
+                ),
+            ]));
         }
+        lines.push(Line::from(""));
     }
 
-    // Global attributes
+    // Global attributes section
     if !node.attributes.is_empty() {
         lines.push(Line::from(Span::styled(
-            "attributes:",
-            Style::default().fg(colors.yellow),
+            format!("Attributes ({})", node.attributes.len()),
+            Style::default()
+                .fg(colors.orange)
+                .add_modifier(Modifier::BOLD),
         )));
 
         for (key, value) in &node.attributes {
-            lines.push(Line::from(Span::styled(
-                format!("  :{} = {};", key, value),
-                Style::default().fg(colors.green),
-            )));
+            lines.push(Line::from(vec![
+                Span::styled(format!("  :{}", key), Style::default().fg(colors.purple)),
+                Span::styled(" = ", Style::default().fg(colors.fg1)),
+                Span::styled(format!("{}", value), Style::default().fg(colors.aqua)),
+            ]));
         }
     }
 

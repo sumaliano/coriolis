@@ -820,7 +820,7 @@ fn draw_heatmap_view(
     // so that transposing just swaps the pixel dimensions without changing the scale
     let max_h = heatmap_area.height as usize;
     let max_w_chars = heatmap_area.width as usize;
-    let pixel_width = 2;
+    let pixel_width = 3;
     let max_w = max_w_chars / pixel_width;
     if max_h == 0 || max_w == 0 {
         return;
@@ -936,6 +936,7 @@ fn draw_heatmap_view(
             let data_col = data_col.min(cols - 1);
             let label = var.get_coord_label(col_dim, data_col);
             let label_short: String = label.chars().take(8).collect();
+
             let screen_x = heatmap_area.x + offset_x_chars + (x_pos * pixel_width) as u16;
             for (i, ch) in label_short.chars().enumerate() {
                 let x = screen_x + i as u16;

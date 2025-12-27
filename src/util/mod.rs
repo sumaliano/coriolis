@@ -9,7 +9,5 @@
 pub mod clipboard;
 pub mod colormaps;
 pub mod dimension_calculator;
-pub mod layout_config;
 
 pub use dimension_calculator::DimensionCalculator;
-pub use layout_config::LayoutConfig;
