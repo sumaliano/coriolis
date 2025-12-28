@@ -477,6 +477,10 @@ impl DataViewerState {
                     &mut self.slicing.display_dims.0,
                     &mut self.slicing.display_dims.1,
                 );
+                // Also swap cursor position to maintain the same logical position
+                std::mem::swap(&mut self.heat_cursor_row, &mut self.heat_cursor_col);
+                // Clamp cursor to new dimensions
+                self.clamp_heat_cursor();
             }
         }
     }
@@ -517,6 +521,9 @@ impl DataViewerState {
             } else {
                 self.slicing.display_dims.1 = next;
             }
+
+            // Clamp cursor to new dimensions
+            self.clamp_heat_cursor();
 
             // Update active selector if it's now a display dimension
             if let Some(active) = self.slicing.active_dim_selector {
@@ -560,6 +567,28 @@ impl DataViewerState {
             1
         } else {
             var.shape[self.slicing.display_dims.1]
+        }
+    }
+
+    /// Clamp heatmap cursor to current dimensions.
+    fn clamp_heat_cursor(&mut self) {
+        if let Some(ref var) = self.variable {
+            if var.ndim() >= 2 {
+                let rows = var.shape[self.slicing.display_dims.0];
+                let cols = var.shape[self.slicing.display_dims.1];
+
+                if rows > 0 {
+                    self.heat_cursor_row = self.heat_cursor_row.min(rows - 1);
+                } else {
+                    self.heat_cursor_row = 0;
+                }
+
+                if cols > 0 {
+                    self.heat_cursor_col = self.heat_cursor_col.min(cols - 1);
+                } else {
+                    self.heat_cursor_col = 0;
+                }
+            }
         }
     }
 }

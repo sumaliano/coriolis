@@ -898,9 +898,11 @@ fn draw_heatmap_view(
         }
     }
 
-    // Draw crosshair at cursor
-    let cy = ((cursor_row as f64) / rows as f64 * disp_rows as f64).floor() as usize;
-    let cx = ((cursor_col as f64) / cols as f64 * disp_cols as f64).floor() as usize;
+    // Draw cursor as a simple cross at the data position
+    // Use inverse mapping: find which display pixel corresponds to the cursor data position
+    // This ensures the cursor is drawn at the exact pixel that represents the data cell
+    let cy = ((cursor_row as f64 + 0.5) * (disp_rows as f64) / (rows as f64)).floor() as usize;
+    let cx = ((cursor_col as f64 + 0.5) * (disp_cols as f64) / (cols as f64)).floor() as usize;
     let cy = cy.min(disp_rows.saturating_sub(1));
     let cx = cx.min(disp_cols.saturating_sub(1));
     let screen_y = heatmap_area.y + offset_y + cy as u16;
