@@ -1,7 +1,7 @@
 //! Tree panel UI rendering.
 
 use super::ExplorerState;
-use crate::data::DatasetInfo;
+use crate::data::{DataNode, DatasetInfo};
 use crate::ui::ThemeColors;
 use ratatui::{
     layout::Rect,
@@ -11,6 +11,96 @@ use ratatui::{
     Frame,
 };
 use std::path::PathBuf;
+
+/// Build styled spans for a variable node.
+fn build_variable_spans(node: &DataNode, colors: &ThemeColors) -> Vec<Span<'static>> {
+    let mut spans = Vec::new();
+
+    // Icon
+    spans.push(Span::raw("- "));
+
+    // Variable name - bold and colored by data type
+    let var_color = if let Some(dtype) = &node.dtype {
+        let dtype_lower = dtype.to_lowercase();
+        if dtype_lower.contains("float") || dtype_lower.contains("double") {
+            colors.aqua
+        } else if dtype_lower.contains("int")
+            || dtype_lower.contains("short")
+            || dtype_lower.contains("byte")
+        {
+            colors.blue
+        } else if dtype_lower.contains("char") || dtype_lower.contains("string") {
+            colors.purple
+        } else {
+            colors.green
+        }
+    } else {
+        colors.green
+    };
+
+    spans.push(Span::styled(
+        node.name.clone(),
+        Style::default()
+            .fg(var_color)
+            .add_modifier(Modifier::BOLD),
+    ));
+
+    // Dimension info: (dim1=size1, dim2=size2)
+    if let Some(dim_str) = node.metadata.get("dims") {
+        if !dim_str.is_empty() {
+            let dims: Vec<&str> = dim_str.split(", ").collect();
+            if let Some(shape) = &node.shape {
+                spans.push(Span::styled(" (", Style::default().fg(colors.fg1)));
+
+                for (i, dim_name) in dims.iter().enumerate() {
+                    if i > 0 {
+                        spans.push(Span::styled(", ", Style::default().fg(colors.fg1)));
+                    }
+                    if let Some(&size) = shape.get(i) {
+                        // Dimension name in yellow
+                        spans.push(Span::styled(
+                            dim_name.to_string(),
+                            Style::default().fg(colors.yellow),
+                        ));
+                        spans.push(Span::styled("=", Style::default().fg(colors.fg1)));
+                        // Size in purple
+                        spans.push(Span::styled(
+                            size.to_string(),
+                            Style::default().fg(colors.purple),
+                        ));
+                    }
+                }
+
+                spans.push(Span::styled(")", Style::default().fg(colors.fg1)));
+            }
+        }
+    }
+
+    // Dimensionality: [ND]
+    if let Some(shape) = &node.shape {
+        let ndim = shape.len();
+        if ndim > 0 {
+            spans.push(Span::styled(" [", Style::default().fg(colors.fg1)));
+            spans.push(Span::styled(
+                format!("{}", ndim),
+                Style::default().fg(colors.orange),
+            ));
+            spans.push(Span::styled("D]", Style::default().fg(colors.fg1)));
+        }
+    }
+
+    // Data type - in a complementary color
+    if let Some(dtype) = &node.dtype {
+        let clean_type = dtype.replace("NcVariableType::", "").to_lowercase();
+        spans.push(Span::raw(" "));
+        spans.push(Span::styled(
+            clean_type,
+            Style::default().fg(colors.green),
+        ));
+    }
+
+    spans
+}
 
 /// Draw the tree panel UI.
 pub fn draw_tree(
@@ -62,51 +152,9 @@ pub fn draw_tree(
                         .add_modifier(Modifier::BOLD),
                 )
             } else if item.node.is_variable() {
-                // For variables: colorize based on properties
-                let display_str = item.node.display_name();
-
-                // Split at first space or opening parenthesis to separate name from metadata
-                let (name_part, meta_part) = if let Some(pos) = display_str.find(['(', ' ']) {
-                    let (n, m) = display_str.split_at(pos);
-                    (n.to_string(), m.to_string())
-                } else {
-                    (display_str.clone(), String::new())
-                };
-
-                // Choose color based on data type and dimensionality
-                let var_color = if let Some(dtype) = &item.node.dtype {
-                    let dtype_lower = dtype.to_lowercase();
-                    if dtype_lower.contains("float") || dtype_lower.contains("double") {
-                        colors.aqua
-                    } else if dtype_lower.contains("int")
-                        || dtype_lower.contains("short")
-                        || dtype_lower.contains("byte")
-                    {
-                        colors.blue
-                    } else if dtype_lower.contains("char") || dtype_lower.contains("string") {
-                        colors.purple
-                    } else {
-                        colors.green
-                    }
-                } else {
-                    colors.green
-                };
-
-                let mut spans = vec![
-                    Span::raw(indent),
-                    Span::raw(expand_icon),
-                    Span::styled(
-                        name_part,
-                        Style::default()
-                            .fg(var_color)
-                            .add_modifier(Modifier::BOLD),
-                    ),
-                ];
-
-                if !meta_part.is_empty() {
-                    spans.push(Span::styled(meta_part, Style::default().fg(colors.gray)));
-                }
-
+                // Build styled spans for variable
+                let mut spans = vec![Span::raw(indent), Span::raw(expand_icon)];
+                spans.extend(build_variable_spans(&item.node, colors));
                 Line::from(spans)
             } else {
                 // Groups and root - normal styling
