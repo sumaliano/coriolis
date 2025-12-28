@@ -1,6 +1,6 @@
 //! Color mapping functions for data visualization.
 
-use crate::overlay::ColorPalette;
+use crate::data_viewer::ColorPalette;
 use ratatui::style::Color;
 
 impl ColorPalette {

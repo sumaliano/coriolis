@@ -1,4 +1,32 @@
-use crate::data::{DataNode, DatasetInfo};
+//! Explorer feature - NetCDF structure exploration.
+//!
+//! This module provides functionality for exploring NetCDF file structure,
+//! including tree navigation and details display.
+
+pub mod details;
+pub mod tree;
+
+use crate::data::DataNode;
+use std::collections::HashSet;
+
+/// Explorer state - combines tree navigation and details display.
+#[derive(Debug)]
+pub struct ExplorerState {
+    /// All tree items in display order (only visible items).
+    items: Vec<TreeItem>,
+    /// Cursor position (index into items).
+    cursor: usize,
+    /// The root node for rebuilding.
+    root: Option<DataNode>,
+    /// Set of expanded node paths.
+    expanded_paths: HashSet<String>,
+    /// Scroll offset for the tree view.
+    scroll_offset: usize,
+    /// Show preview/details panel.
+    pub show_preview: bool,
+    /// Preview scroll offset.
+    pub preview_scroll: u16,
+}
 
 /// A single item in the tree view.
 #[derive(Debug, Clone)]
@@ -11,40 +39,23 @@ pub struct TreeItem {
     pub expanded: bool,
 }
 
-/// Tree navigation state.
-///
-/// The tree maintains a flat list of visible items. When nodes are expanded/collapsed,
-/// the list is rebuilt to reflect the new visibility state.
-#[derive(Debug)]
-pub struct TreeState {
-    /// All tree items in display order (only visible items).
-    items: Vec<TreeItem>,
-    /// Cursor position (index into items).
-    cursor: usize,
-    /// The root node for rebuilding.
-    root: Option<DataNode>,
-    /// Set of expanded node paths.
-    expanded_paths: std::collections::HashSet<String>,
-    /// Scroll offset for the tree view.
-    scroll_offset: usize,
-}
-
-impl TreeState {
-    /// Create a new tree state.
+impl ExplorerState {
+    /// Create a new explorer state.
     pub fn new() -> Self {
         Self {
             items: Vec::new(),
             cursor: 0,
             root: None,
-            expanded_paths: std::collections::HashSet::new(),
+            expanded_paths: HashSet::new(),
             scroll_offset: 0,
+            show_preview: true,
+            preview_scroll: 0,
         }
     }
 
     /// Build tree from dataset.
-    pub fn build_from_dataset(&mut self, dataset: &DatasetInfo) {
+    pub fn build_from_dataset(&mut self, dataset: &crate::data::DatasetInfo) {
         self.root = Some(dataset.root_node.clone());
-        // Root is expanded by default
         self.expanded_paths.clear();
         self.expanded_paths.insert(dataset.root_node.path.clone());
         self.rebuild_visible_items();
@@ -68,7 +79,6 @@ impl TreeState {
             expanded: is_expanded,
         });
 
-        // Only add children if this node is expanded
         if is_expanded {
             for child in &node.children {
                 self.add_visible_recursive(child, level + 1);
@@ -96,12 +106,10 @@ impl TreeState {
             return;
         }
 
-        // If cursor is above the visible area, scroll up
         if self.cursor < self.scroll_offset {
             self.scroll_offset = self.cursor;
         }
 
-        // If cursor is below the visible area, scroll down
         if self.cursor >= self.scroll_offset + viewport_height {
             self.scroll_offset = self.cursor.saturating_sub(viewport_height - 1);
         }
@@ -136,25 +144,6 @@ impl TreeState {
         }
     }
 
-    /// Toggle the expansion state of a node at the given index.
-    #[allow(dead_code)]
-    pub fn toggle_expand(&mut self, index: usize) {
-        if index >= self.items.len() {
-            return;
-        }
-
-        let item = &self.items[index];
-        let path = item.node.path.clone();
-
-        if item.expanded {
-            self.expanded_paths.remove(&path);
-        } else {
-            self.expanded_paths.insert(path);
-        }
-
-        self.rebuild_visible_items();
-    }
-
     /// Go to the first item.
     pub fn goto_first(&mut self) {
         self.cursor = 0;
@@ -168,7 +157,6 @@ impl TreeState {
     }
 
     /// Get all currently visible items in the tree.
-    /// Since we rebuild on expand/collapse, all items in the list are visible.
     pub fn visible_items(&self) -> Vec<&TreeItem> {
         self.items.iter().collect()
     }
@@ -176,12 +164,6 @@ impl TreeState {
     /// Get the current cursor position.
     pub fn cursor(&self) -> usize {
         self.cursor
-    }
-
-    /// Check if a node is expanded.
-    #[allow(dead_code)]
-    pub fn is_expanded(&self, path: &str) -> bool {
-        self.expanded_paths.contains(path)
     }
 
     /// Get the current node.
@@ -207,7 +189,7 @@ impl TreeState {
         self.rebuild_visible_items();
     }
 
-    fn collect_group_paths(node: &DataNode, paths: &mut std::collections::HashSet<String>) {
+    fn collect_group_paths(node: &DataNode, paths: &mut HashSet<String>) {
         if node.is_group() {
             paths.insert(node.path.clone());
         }
@@ -215,9 +197,24 @@ impl TreeState {
             Self::collect_group_paths(child, paths);
         }
     }
+
+    /// Toggle preview panel.
+    pub fn toggle_preview(&mut self) {
+        self.show_preview = !self.show_preview;
+    }
+
+    /// Scroll preview down.
+    pub fn scroll_down(&mut self) {
+        self.preview_scroll = self.preview_scroll.saturating_add(5);
+    }
+
+    /// Scroll preview up.
+    pub fn scroll_up(&mut self) {
+        self.preview_scroll = self.preview_scroll.saturating_sub(5);
+    }
 }
 
-impl Default for TreeState {
+impl Default for ExplorerState {
     fn default() -> Self {
         Self::new()
     }

@@ -3,7 +3,7 @@
 use anyhow::Result;
 use clap::Parser;
 use coriolis::app::App;
-use coriolis::overlay::ViewMode;
+use coriolis::data_viewer::ViewMode;
 use coriolis::ui;
 use coriolis::util;
 use crossterm::{
@@ -107,72 +107,72 @@ fn run_app<B: ratatui::backend::Backend>(terminal: &mut Terminal<B>, mut app: Ap
         if event::poll(std::time::Duration::from_millis(100))? {
             if let Event::Key(key) = event::read()? {
                 // Overlay mode - handle separately
-                if app.overlay.visible {
+                if app.data_viewer.visible {
                     match (key.modifiers, key.code) {
                         // Close overlay
                         (KeyModifiers::NONE, KeyCode::Esc)
                         | (KeyModifiers::NONE, KeyCode::Char('q'))
                         | (KeyModifiers::NONE, KeyCode::Char('p')) => {
-                            app.overlay.close();
+                            app.data_viewer.close();
                             app.status = "Data viewer closed".to_string();
                         },
                         // Cycle view mode with Tab
                         (KeyModifiers::NONE, KeyCode::Tab) => {
-                            app.overlay.cycle_view_mode();
-                            let view_name = app.overlay.view_mode.name();
-                            app.overlay.set_status(format!("View: {}", view_name));
+                            app.data_viewer.cycle_view_mode();
+                            let view_name = app.data_viewer.view_mode.name();
+                            app.data_viewer.set_status(format!("View: {}", view_name));
                         },
                         // Cycle color palette with C
                         (KeyModifiers::NONE, KeyCode::Char('c'))
                         | (KeyModifiers::NONE, KeyCode::Char('C')) => {
-                            app.overlay.cycle_color_palette();
-                            let palette_name = app.overlay.color_palette.name();
-                            app.overlay.set_status(format!("Palette: {}", palette_name));
+                            app.data_viewer.cycle_color_palette();
+                            let palette_name = app.data_viewer.color_palette.name();
+                            app.data_viewer.set_status(format!("Palette: {}", palette_name));
                         },
                         // Contextual arrows/hjkl
                         // Table: pan; Plot1D: move cursor; Heatmap: move crosshair
                         (KeyModifiers::NONE, KeyCode::Up)
                         | (KeyModifiers::NONE, KeyCode::Char('k')) => {
-                            match app.overlay.view_mode {
-                                ViewMode::Table => app.overlay.scroll_up(1),
-                                ViewMode::Heatmap => app.overlay.move_heat_cursor(-1, 0),
+                            match app.data_viewer.view_mode {
+                                ViewMode::Table => app.data_viewer.scroll_up(1),
+                                ViewMode::Heatmap => app.data_viewer.move_heat_cursor(-1, 0),
                                 ViewMode::Plot1D => { /* reserved for future y-zoom */ },
                             }
                         },
                         (KeyModifiers::NONE, KeyCode::Down)
                         | (KeyModifiers::NONE, KeyCode::Char('j')) => {
-                            match app.overlay.view_mode {
-                                ViewMode::Table => app.overlay.scroll_down(1),
-                                ViewMode::Heatmap => app.overlay.move_heat_cursor(1, 0),
+                            match app.data_viewer.view_mode {
+                                ViewMode::Table => app.data_viewer.scroll_down(1),
+                                ViewMode::Heatmap => app.data_viewer.move_heat_cursor(1, 0),
                                 ViewMode::Plot1D => { /* reserved for future y-zoom */ },
                             }
                         },
                         (KeyModifiers::NONE, KeyCode::Left)
-                        | (KeyModifiers::NONE, KeyCode::Char('h')) => match app.overlay.view_mode {
-                            ViewMode::Table => app.overlay.scroll_left(1),
-                            ViewMode::Heatmap => app.overlay.move_heat_cursor(0, -1),
-                            ViewMode::Plot1D => app.overlay.plot_cursor_left(),
+                        | (KeyModifiers::NONE, KeyCode::Char('h')) => match app.data_viewer.view_mode {
+                            ViewMode::Table => app.data_viewer.scroll_left(1),
+                            ViewMode::Heatmap => app.data_viewer.move_heat_cursor(0, -1),
+                            ViewMode::Plot1D => app.data_viewer.plot_cursor_left(),
                         },
                         (KeyModifiers::NONE, KeyCode::Right)
-                        | (KeyModifiers::NONE, KeyCode::Char('l')) => match app.overlay.view_mode {
-                            ViewMode::Table => app.overlay.scroll_right(1),
-                            ViewMode::Heatmap => app.overlay.move_heat_cursor(0, 1),
-                            ViewMode::Plot1D => app.overlay.plot_cursor_right(),
+                        | (KeyModifiers::NONE, KeyCode::Char('l')) => match app.data_viewer.view_mode {
+                            ViewMode::Table => app.data_viewer.scroll_right(1),
+                            ViewMode::Heatmap => app.data_viewer.move_heat_cursor(0, 1),
+                            ViewMode::Plot1D => app.data_viewer.plot_cursor_right(),
                         },
                         // Page up/down for large scrolling
                         (KeyModifiers::CONTROL, KeyCode::Char('u')) => {
-                            app.overlay.scroll_up(10);
+                            app.data_viewer.scroll_up(10);
                         },
                         (KeyModifiers::CONTROL, KeyCode::Char('d')) => {
-                            app.overlay.scroll_down(10);
+                            app.data_viewer.scroll_down(10);
                         },
                         // Dimension selector navigation (Tab through dimensions for 3D+ data)
                         (KeyModifiers::NONE, KeyCode::Char('s')) => {
-                            app.overlay.next_dim_selector();
+                            app.data_viewer.next_dim_selector();
                             let status_msg = if let Some(dim) =
-                                app.overlay.slicing.active_dim_selector
+                                app.data_viewer.slicing.active_dim_selector
                             {
-                                if let Some(ref var) = app.overlay.variable {
+                                if let Some(ref var) = app.data_viewer.variable {
                                     let dim_name =
                                         var.dim_names.get(dim).map(|s| s.as_str()).unwrap_or("?");
                                     Some(format!("Slicing dimension: {}", dim_name))
@@ -183,47 +183,47 @@ fn run_app<B: ratatui::backend::Backend>(terminal: &mut Terminal<B>, mut app: Ap
                                 None
                             };
                             if let Some(msg) = status_msg {
-                                app.overlay.set_status(msg);
+                                app.data_viewer.set_status(msg);
                             }
                         },
                         // Slice navigation with PageUp/PageDown
                         (KeyModifiers::NONE, KeyCode::PageUp) => {
-                            app.overlay.increment_active_slice();
+                            app.data_viewer.increment_active_slice();
                         },
                         (KeyModifiers::NONE, KeyCode::PageDown) => {
-                            app.overlay.decrement_active_slice();
+                            app.data_viewer.decrement_active_slice();
                         },
                         // Also keep +/- for slice navigation
                         (KeyModifiers::NONE, KeyCode::Char(']'))
                         | (KeyModifiers::NONE, KeyCode::Char('+'))
                         | (KeyModifiers::NONE, KeyCode::Char('=')) => {
-                            app.overlay.increment_active_slice();
+                            app.data_viewer.increment_active_slice();
                         },
                         (KeyModifiers::NONE, KeyCode::Char('['))
                         | (KeyModifiers::NONE, KeyCode::Char('-'))
                         | (KeyModifiers::NONE, KeyCode::Char('_')) => {
-                            app.overlay.decrement_active_slice();
+                            app.data_viewer.decrement_active_slice();
                         },
                         // Change which dimensions are displayed
                         (KeyModifiers::NONE, KeyCode::Char('r'))
                         | (KeyModifiers::NONE, KeyCode::Char('R')) => {
-                            app.overlay.rotate_display_dims();
-                            app.overlay
+                            app.data_viewer.rotate_display_dims();
+                            app.data_viewer
                                 .set_status("Rotated Y ↔ X dimensions".to_string());
                         },
                         // Simplified UI: removed 1D options (auto/log/agg) and heatmap range/zoom/pan toggles
                         // Clipboard export remains below
                         (KeyModifiers::CONTROL, KeyCode::Char('c')) => {
-                            app.overlay.copy_visible_to_clipboard();
-                            app.overlay
+                            app.data_viewer.copy_visible_to_clipboard();
+                            app.data_viewer
                                 .set_status("Copied visible data to clipboard (TSV)".to_string());
                         },
                         (KeyModifiers::NONE, KeyCode::Char('y'))
                         | (KeyModifiers::NONE, KeyCode::Char('Y')) => {
-                            app.overlay.cycle_display_dim(0);
+                            app.data_viewer.cycle_display_dim(0);
                             // Show which dimension was selected
-                            let status_msg = if let Some(ref var) = app.overlay.variable {
-                                let dim_idx = app.overlay.slicing.display_dims.0;
+                            let status_msg = if let Some(ref var) = app.data_viewer.variable {
+                                let dim_idx = app.data_viewer.slicing.display_dims.0;
                                 let dim_name = var
                                     .dim_names
                                     .get(dim_idx)
@@ -233,14 +233,14 @@ fn run_app<B: ratatui::backend::Backend>(terminal: &mut Terminal<B>, mut app: Ap
                             } else {
                                 "Cycled Y dimension".to_string()
                             };
-                            app.overlay.set_status(status_msg);
+                            app.data_viewer.set_status(status_msg);
                         },
                         (KeyModifiers::NONE, KeyCode::Char('x'))
                         | (KeyModifiers::NONE, KeyCode::Char('X')) => {
-                            app.overlay.cycle_display_dim(1);
+                            app.data_viewer.cycle_display_dim(1);
                             // Show which dimension was selected
-                            let status_msg = if let Some(ref var) = app.overlay.variable {
-                                let dim_idx = app.overlay.slicing.display_dims.1;
+                            let status_msg = if let Some(ref var) = app.data_viewer.variable {
+                                let dim_idx = app.data_viewer.slicing.display_dims.1;
                                 let dim_name = var
                                     .dim_names
                                     .get(dim_idx)
@@ -250,26 +250,26 @@ fn run_app<B: ratatui::backend::Backend>(terminal: &mut Terminal<B>, mut app: Ap
                             } else {
                                 "Cycled X dimension".to_string()
                             };
-                            app.overlay.set_status(status_msg);
+                            app.data_viewer.set_status(status_msg);
                         },
                         // Toggle scale/offset
                         (KeyModifiers::NONE, KeyCode::Char('o'))
                         | (KeyModifiers::NONE, KeyCode::Char('O')) => {
-                            if app.overlay.has_scale_offset() {
-                                app.overlay.toggle_scale_offset();
-                                let mode = if app.overlay.apply_scale_offset {
+                            if app.data_viewer.has_scale_offset() {
+                                app.data_viewer.toggle_scale_offset();
+                                let mode = if app.data_viewer.apply_scale_offset {
                                     "Scaled"
                                 } else {
                                     "Raw"
                                 };
-                                app.overlay.set_status(format!(
+                                app.data_viewer.set_status(format!(
                                     "Data: {} (scale={}, offset={})",
                                     mode,
-                                    app.overlay.scale_factor(),
-                                    app.overlay.add_offset()
+                                    app.data_viewer.scale_factor(),
+                                    app.data_viewer.add_offset()
                                 ));
                             } else {
-                                app.overlay
+                                app.data_viewer
                                     .set_status("No scale/offset for this variable".to_string());
                             }
                         },
@@ -284,11 +284,11 @@ fn run_app<B: ratatui::backend::Backend>(terminal: &mut Terminal<B>, mut app: Ap
                         KeyCode::Enter => {
                             app.search.submit();
                             if let Some(ref dataset) = app.dataset {
-                                app.tree_cursor.expand_all();
+                                app.explorer.expand_all();
                                 app.search.perform_search(&dataset.root_node);
 
                                 if let Some(path) = app.search.current_match_path() {
-                                    app.tree_cursor.goto_node(path);
+                                    app.explorer.goto_node(path);
                                 }
                             }
                         },
@@ -326,9 +326,9 @@ fn run_app<B: ratatui::backend::Backend>(terminal: &mut Terminal<B>, mut app: Ap
                         // Go to parent directory
                         (KeyModifiers::NONE, KeyCode::Char('h'))
                         | (KeyModifiers::NONE, KeyCode::Left) => {
-                            if let Some(parent) = app.current_dir.parent() {
-                                app.current_dir = parent.to_path_buf();
-                                app.load_directory();
+                            if let Some(parent) = app.file_browser.current_dir.parent() {
+                                app.file_browser.current_dir = parent.to_path_buf();
+                                app.file_browser.load_directory();
                             }
                         },
 
@@ -350,48 +350,48 @@ fn run_app<B: ratatui::backend::Backend>(terminal: &mut Terminal<B>, mut app: Ap
                     // Navigation
                     (KeyModifiers::NONE, KeyCode::Up)
                     | (KeyModifiers::NONE, KeyCode::Char('k')) => {
-                        app.tree_cursor.cursor_up();
-                        app.preview_scroll = 0;
+                        app.explorer.cursor_up();
+                        app.explorer.preview_scroll = 0;
                     },
                     (KeyModifiers::NONE, KeyCode::Down)
                     | (KeyModifiers::NONE, KeyCode::Char('j')) => {
-                        app.tree_cursor.cursor_down();
-                        app.preview_scroll = 0;
+                        app.explorer.cursor_down();
+                        app.explorer.preview_scroll = 0;
                     },
                     (KeyModifiers::NONE, KeyCode::Left)
                     | (KeyModifiers::NONE, KeyCode::Char('h')) => {
-                        app.tree_cursor.collapse_current();
+                        app.explorer.collapse_current();
                     },
                     (KeyModifiers::NONE, KeyCode::Right)
                     | (KeyModifiers::NONE, KeyCode::Char('l')) => {
-                        app.tree_cursor.expand_current();
+                        app.explorer.expand_current();
                     },
 
                     // Vim navigation
                     (KeyModifiers::NONE, KeyCode::Char('g')) => {
                         if pending_g {
-                            app.tree_cursor.goto_first();
-                            app.preview_scroll = 0;
+                            app.explorer.goto_first();
+                            app.explorer.preview_scroll = 0;
                             pending_g = false;
                         } else {
                             pending_g = true;
                         }
                     },
                     (KeyModifiers::SHIFT, KeyCode::Char('G')) => {
-                        app.tree_cursor.goto_last();
-                        app.preview_scroll = 0;
+                        app.explorer.goto_last();
+                        app.explorer.preview_scroll = 0;
                     },
                     (KeyModifiers::CONTROL, KeyCode::Char('f')) => {
                         for _ in 0..15 {
-                            app.tree_cursor.cursor_down();
+                            app.explorer.cursor_down();
                         }
-                        app.preview_scroll = 0;
+                        app.explorer.preview_scroll = 0;
                     },
                     (KeyModifiers::CONTROL, KeyCode::Char('b')) => {
                         for _ in 0..15 {
-                            app.tree_cursor.cursor_up();
+                            app.explorer.cursor_up();
                         }
-                        app.preview_scroll = 0;
+                        app.explorer.preview_scroll = 0;
                     },
 
                     // Search
@@ -401,13 +401,13 @@ fn run_app<B: ratatui::backend::Backend>(terminal: &mut Terminal<B>, mut app: Ap
                     (KeyModifiers::NONE, KeyCode::Char('n')) => {
                         app.search.next_match();
                         if let Some(path) = app.search.current_match_path() {
-                            app.tree_cursor.goto_node(path);
+                            app.explorer.goto_node(path);
                         }
                     },
                     (KeyModifiers::SHIFT, KeyCode::Char('N')) => {
                         app.search.prev_match();
                         if let Some(path) = app.search.current_match_path() {
-                            app.tree_cursor.goto_node(path);
+                            app.explorer.goto_node(path);
                         }
                     },
 

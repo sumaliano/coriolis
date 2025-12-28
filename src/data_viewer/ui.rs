@@ -1,6 +1,6 @@
 //! Data viewer overlay - pure rendering layer.
 
-use super::{OverlayState, ViewMode};
+use super::{DataViewerState, ViewMode};
 use crate::data::LoadedVariable;
 use crate::ui::ThemeColors;
 use ratatui::{
@@ -14,7 +14,7 @@ use ratatui::{
     Frame,
 };
 /// Draw the data overlay.
-pub fn draw_overlay(f: &mut Frame<'_>, state: &OverlayState, colors: &ThemeColors) {
+pub fn draw_data_viewer(f: &mut Frame<'_>, state: &DataViewerState, colors: &ThemeColors) {
     if !state.visible {
         return;
     }
@@ -45,7 +45,7 @@ pub fn draw_overlay(f: &mut Frame<'_>, state: &OverlayState, colors: &ThemeColor
         let has_status = state.status_message.is_some();
 
         let mut constraints = vec![
-            Constraint::Length(4), // Header
+            Constraint::Length(3), // Header (reduced since statistics moved to Details pane)
         ];
         if has_status {
             constraints.push(Constraint::Length(1)); // Status
@@ -95,7 +95,7 @@ fn draw_header(
     f: &mut Frame<'_>,
     area: Rect,
     var: &LoadedVariable,
-    state: &OverlayState,
+    state: &DataViewerState,
     colors: &ThemeColors,
 ) {
     let mut lines = vec![];
@@ -160,12 +160,6 @@ fn draw_header(
         ),
     ]));
 
-    // Third line: Statistics (compact, smart formatting)
-    let stats_spans = build_stats_spans(var, colors);
-    if !stats_spans.is_empty() {
-        lines.push(Line::from(stats_spans));
-    }
-
     let paragraph = Paragraph::new(lines).alignment(Alignment::Center).block(
         Block::default()
             .borders(Borders::BOTTOM)
@@ -175,58 +169,13 @@ fn draw_header(
     f.render_widget(paragraph, area);
 }
 
-fn draw_status(f: &mut Frame<'_>, area: Rect, state: &OverlayState, colors: &ThemeColors) {
+fn draw_status(f: &mut Frame<'_>, area: Rect, state: &DataViewerState, colors: &ThemeColors) {
     if let Some(ref msg) = state.status_message {
         let paragraph = Paragraph::new(msg.as_str())
             .style(Style::default().fg(colors.yellow).bg(colors.bg1))
             .alignment(Alignment::Center);
         f.render_widget(paragraph, area);
     }
-}
-
-/// Build statistics spans with smart formatting.
-fn build_stats_spans<'a>(var: &LoadedVariable, colors: &ThemeColors) -> Vec<Span<'a>> {
-    let mut spans = vec![];
-
-    if let Some((min, max)) = var.min_max() {
-        spans.push(Span::styled("Min: ", Style::default().fg(colors.green)));
-        spans.push(Span::styled(
-            format_stat_value(min),
-            Style::default().fg(colors.fg0),
-        ));
-        spans.push(Span::styled("  Max: ", Style::default().fg(colors.green)));
-        spans.push(Span::styled(
-            format_stat_value(max),
-            Style::default().fg(colors.fg0),
-        ));
-    }
-
-    if let Some(mean) = var.mean_value() {
-        spans.push(Span::styled("  Mean: ", Style::default().fg(colors.green)));
-        spans.push(Span::styled(
-            format_stat_value(mean),
-            Style::default().fg(colors.fg0),
-        ));
-    }
-
-    if let Some(std) = var.std_value() {
-        spans.push(Span::styled("  Std: ", Style::default().fg(colors.green)));
-        spans.push(Span::styled(
-            format_stat_value(std),
-            Style::default().fg(colors.fg0),
-        ));
-    }
-
-    let total = var.total_elements();
-    let valid = var.valid_count();
-    if valid < total {
-        spans.push(Span::styled(
-            format!("  ({}/{} valid)", valid, total),
-            Style::default().fg(colors.gray),
-        ));
-    }
-
-    spans
 }
 
 /// Format a statistic value with smart precision.
@@ -257,7 +206,7 @@ fn format_stat_value(val: f64) -> String {
 fn draw_table_view(
     f: &mut Frame<'_>,
     area: Rect,
-    state: &OverlayState,
+    state: &DataViewerState,
     var: &LoadedVariable,
     colors: &ThemeColors,
 ) {
@@ -405,7 +354,7 @@ fn draw_table_view(
 fn draw_plot1d_view(
     f: &mut Frame<'_>,
     area: Rect,
-    state: &OverlayState,
+    state: &DataViewerState,
     var: &LoadedVariable,
     colors: &ThemeColors,
 ) {
@@ -651,7 +600,7 @@ fn format_axis_label(val: f64) -> String {
 fn draw_heatmap_view(
     f: &mut Frame<'_>,
     area: Rect,
-    state: &OverlayState,
+    state: &DataViewerState,
     var: &LoadedVariable,
     colors: &ThemeColors,
 ) {
@@ -970,7 +919,7 @@ fn draw_heatmap_view(
 fn draw_dimension_selectors(
     f: &mut Frame<'_>,
     area: Rect,
-    state: &OverlayState,
+    state: &DataViewerState,
     var: &LoadedVariable,
     colors: &ThemeColors,
 ) {
@@ -1095,7 +1044,7 @@ fn draw_dimension_selectors(
     f.render_widget(paragraph, area);
 }
 
-fn draw_footer(f: &mut Frame<'_>, area: Rect, state: &OverlayState, colors: &ThemeColors) {
+fn draw_footer(f: &mut Frame<'_>, area: Rect, state: &DataViewerState, colors: &ThemeColors) {
     // Build help string - add O for scale/offset if applicable
     let scale_hint = if state.has_scale_offset() {
         " | O: Raw/Scaled"
@@ -1182,7 +1131,7 @@ fn centered_rect(percent_x: u16, percent_y: u16, r: Rect) -> Rect {
 }
 
 /// Get number of rows for current view (helper for rendering).
-fn get_view_rows(state: &OverlayState, var: &LoadedVariable) -> usize {
+fn get_view_rows(state: &DataViewerState, var: &LoadedVariable) -> usize {
     if var.ndim() == 0 {
         1
     } else if var.ndim() == 1 {
@@ -1193,7 +1142,7 @@ fn get_view_rows(state: &OverlayState, var: &LoadedVariable) -> usize {
 }
 
 /// Get number of columns for current view (helper for rendering).
-fn get_view_cols(state: &OverlayState, var: &LoadedVariable) -> usize {
+fn get_view_cols(state: &DataViewerState, var: &LoadedVariable) -> usize {
     if var.ndim() <= 1 {
         1
     } else {

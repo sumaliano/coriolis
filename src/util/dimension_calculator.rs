@@ -1,6 +1,6 @@
 //! Dimension calculation logic for different view modes.
 
-use crate::overlay::ViewMode;
+use crate::data_viewer::ViewMode;
 
 /// Calculator for determining which dimensions to display/slice based on view mode.
 #[derive(Debug, Clone)]

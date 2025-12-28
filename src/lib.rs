@@ -14,12 +14,20 @@
 //!
 //! # Architecture
 //!
-//! Coriolis follows a feature-based architecture:
-//! - `overlay`: Data viewer overlay (state + behavior + UI)
-//! - `navigation`: Tree navigation and search (state + behavior)
-//! - `ui`: Shared UI components and themes
-//! - `data`: Data layer (NetCDF reading)
-//! - `util`: Utilities and helpers
+//! Coriolis follows a clean feature-based architecture with 3 core features:
+//!
+//! ## Core Features
+//!
+//! - **`file_browser`**: File system navigation for opening NetCDF files
+//! - **`explorer`**: NetCDF structure exploration (tree + details)
+//! - **`data_viewer`**: Data visualization (table, plot, heatmap views)
+//!
+//! ## Supporting Modules
+//!
+//! - **`search`**: Search functionality (cross-cutting capability)
+//! - **`data`**: Data layer (NetCDF reading and processing)
+//! - **`ui`**: Shared UI components (themes, formatters, widgets)
+//! - **`util`**: Utilities and helpers (colormaps, clipboard, etc.)
 //!
 //! # Example
 //!
@@ -47,12 +55,16 @@
 pub mod app;
 /// Data reading and representation.
 pub mod data;
+/// Data viewer feature (visualization).
+pub mod data_viewer;
 /// Error types.
 pub mod error;
-/// Navigation and search.
-pub mod navigation;
-/// Data overlay feature.
-pub mod overlay;
+/// Explorer feature (tree + details).
+pub mod explorer;
+/// File browser feature.
+pub mod file_browser;
+/// Search functionality.
+pub mod search;
 /// User interface - shared components.
 pub mod ui;
 /// Utility functions.

@@ -1,13 +1,13 @@
-//! Data overlay feature - state and behavior for the data viewer overlay.
+//! Data viewer feature - data visualization and exploration.
 //!
-//! This module contains all overlay-related functionality including state management,
-//! business logic for navigation and slicing, and view mode handling.
+//! This module contains all data viewer functionality including state management,
+//! business logic for navigation and slicing, and view mode handling (table, plot, heatmap).
 
 pub mod ui;
 
 use crate::data::LoadedVariable;
 
-/// View mode for the data overlay.
+/// View mode for the data viewer.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum ViewMode {
     /// Table view showing raw data values.
@@ -95,9 +95,9 @@ pub struct SlicingState {
     pub active_dim_selector: Option<usize>,
 }
 
-/// State for the data overlay.
+/// State for the data viewer.
 #[derive(Debug, Clone)]
-pub struct OverlayState {
+pub struct DataViewerState {
     /// Currently loaded variable data.
     pub variable: Option<LoadedVariable>,
     /// Current view mode.
@@ -108,11 +108,11 @@ pub struct OverlayState {
     pub scroll: ScrollPosition,
     /// Slicing state for multi-dimensional data.
     pub slicing: SlicingState,
-    /// Is the overlay visible.
+    /// Is the data viewer visible.
     pub visible: bool,
     /// Error message if loading failed.
     pub error: Option<String>,
-    /// Status message to display inside overlay.
+    /// Status message to display inside viewer.
     pub status_message: Option<String>,
     /// 1D plot cursor index (for probe/readout).
     pub plot_cursor: usize,
@@ -124,14 +124,14 @@ pub struct OverlayState {
     pub apply_scale_offset: bool,
 }
 
-impl Default for OverlayState {
+impl Default for DataViewerState {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl OverlayState {
-    /// Create a new overlay state.
+impl DataViewerState {
+    /// Create a new data viewer state.
     pub fn new() -> Self {
         Self {
             variable: None,
