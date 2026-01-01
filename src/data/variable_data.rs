@@ -175,8 +175,11 @@ impl LoadedVariable {
     /// A 1D vector of values along the specified dimension.
     pub fn get_1d_slice(&self, dim: usize, fixed_indices: &[usize], apply_scale: bool) -> Vec<f64> {
         let mut result = Vec::with_capacity(self.shape[dim]);
+
+        // Reuse a single index vector to avoid allocations
+        let mut idx = fixed_indices.to_vec();
+
         for i in 0..self.shape[dim] {
-            let mut idx = fixed_indices.to_vec();
             idx[dim] = i;
             if let Some(&raw) = self.data.get(IxDyn(&idx)) {
                 let val = if apply_scale {
@@ -210,11 +213,14 @@ impl LoadedVariable {
     ) -> Vec<Vec<f64>> {
         let mut result = Vec::with_capacity(self.shape[dim_y]);
 
+        // Reuse a single index vector to avoid allocations
+        let mut idx = fixed_indices.to_vec();
+
         for y in 0..self.shape[dim_y] {
+            idx[dim_y] = y;
             let mut row = Vec::with_capacity(self.shape[dim_x]);
+
             for x in 0..self.shape[dim_x] {
-                let mut idx = fixed_indices.to_vec();
-                idx[dim_y] = y;
                 idx[dim_x] = x;
 
                 if let Some(&raw) = self.data.get(IxDyn(&idx)) {
@@ -327,41 +333,38 @@ pub fn read_variable(file_path: &Path, var_path: &str) -> Result<LoadedVariable>
     // Read the RAW data into f64 array (don't apply scale/offset here)
     let data = read_variable_array(&var, &shape)?;
 
-    // Compute statistics on SCALED data (for display purposes)
+    // Compute statistics on SCALED data using Welford's algorithm (single pass)
     let mut min = f64::INFINITY;
     let mut max = f64::NEG_INFINITY;
-    let mut sum = 0.0f64;
     let mut count = 0usize;
+    let mut mean_accum = 0.0f64;
+    let mut m2 = 0.0f64; // For variance calculation
+
     for &raw in data.iter() {
         let v = raw * scale_factor + add_offset; // Apply scale for statistics
         if v.is_finite() {
+            count += 1;
+
+            // Update min/max
             if v < min {
                 min = v;
             }
             if v > max {
                 max = v;
             }
-            sum += v;
-            count += 1;
+
+            // Welford's online algorithm for mean and variance
+            let delta = v - mean_accum;
+            mean_accum += delta / count as f64;
+            let delta2 = v - mean_accum;
+            m2 += delta * delta2;
         }
     }
+
     let min_max = if count > 0 { Some((min, max)) } else { None };
-    let mean = if count > 0 {
-        Some(sum / count as f64)
-    } else {
-        None
-    };
+    let mean = if count > 0 { Some(mean_accum) } else { None };
     let std = if count > 1 {
-        let mean_val = mean.unwrap();
-        let mut ssd = 0.0;
-        for &raw in data.iter() {
-            let v = raw * scale_factor + add_offset;
-            if v.is_finite() {
-                let d = v - mean_val;
-                ssd += d * d;
-            }
-        }
-        Some((ssd / (count - 1) as f64).sqrt())
+        Some((m2 / (count - 1) as f64).sqrt())
     } else {
         None
     };
