@@ -1,6 +1,7 @@
 //! Variable data reading and manipulation.
 
 use crate::error::{CoriolisError, Result};
+use crate::ui::formatters::clean_dtype;
 use ndarray::{ArrayD, IxDyn};
 use netcdf::types::{FloatType, IntType, NcVariableType};
 use std::path::Path;
@@ -326,9 +327,7 @@ pub fn read_variable(file_path: &Path, var_path: &str) -> Result<LoadedVariable>
         .unwrap_or(0.0);
 
     // Get data type
-    let dtype = format!("{:?}", var.vartype())
-        .replace("NcVariableType::", "")
-        .to_lowercase();
+    let dtype = clean_dtype(&format!("{:?}", var.vartype()));
 
     // Read the RAW data into f64 array (don't apply scale/offset here)
     let data = read_variable_array(&var, &shape)?;

@@ -2,6 +2,7 @@
 
 use super::{DataViewerState, ViewMode};
 use crate::data::LoadedVariable;
+use crate::ui::formatters::format_stat_value;
 use crate::ui::ThemeColors;
 use ratatui::{
     layout::{Alignment, Constraint, Direction, Layout, Rect},
@@ -175,31 +176,6 @@ fn draw_status(f: &mut Frame<'_>, area: Rect, state: &DataViewerState, colors: &
             .style(Style::default().fg(colors.yellow).bg(colors.bg1))
             .alignment(Alignment::Center);
         f.render_widget(paragraph, area);
-    }
-}
-
-/// Format a statistic value with smart precision.
-fn format_stat_value(val: f64) -> String {
-    if !val.is_finite() {
-        return if val.is_nan() {
-            "NaN".to_string()
-        } else if val.is_sign_positive() {
-            "+Inf".to_string()
-        } else {
-            "-Inf".to_string()
-        };
-    }
-    let abs_val = val.abs();
-    if abs_val == 0.0 {
-        "0".to_string()
-    } else if !(1e-3..1e6).contains(&abs_val) {
-        format!("{:.3e}", val)
-    } else if abs_val >= 100.0 {
-        format!("{:.2}", val)
-    } else if abs_val >= 1.0 {
-        format!("{:.4}", val)
-    } else {
-        format!("{:.5}", val)
     }
 }
 

@@ -1,7 +1,7 @@
 //! Details pane formatting for tree nodes.
 
 use crate::data::{read_variable, DataNode};
-use crate::ui::formatters::{format_number, format_stat_value};
+use crate::ui::formatters::{clean_dtype, format_number, format_stat_value, parse_dimensions};
 use crate::ui::ThemeColors;
 use ratatui::{
     style::{Modifier, Style},
@@ -75,36 +75,36 @@ fn format_variable_details(
     ];
 
     // Dimensions
-    if let Some(dim_str) = node.metadata.get("dims") {
-        if !dim_str.is_empty() {
-            let dims: Vec<&str> = dim_str.split(", ").collect();
-            if let Some(shape) = &node.shape {
-                let mut dim_spans = vec![Span::styled(
-                    "  Dimensions: ",
-                    Style::default().fg(colors.fg1),
-                )];
-                for (i, dim_name) in dims.iter().enumerate() {
-                    if i > 0 {
-                        dim_spans.push(Span::styled(" x ", Style::default().fg(colors.fg1)));
-                    }
-                    if let Some(&size) = shape.get(i) {
-                        dim_spans.push(Span::styled(
-                            format!("{}={}", dim_name, size),
-                            Style::default().fg(colors.aqua),
-                        ));
-                    }
+    if let (Some(dim_str), Some(shape)) = (node.metadata.get("dims"), &node.shape) {
+        let dims = parse_dimensions(dim_str, shape);
+        if !dims.is_empty() {
+            let mut dim_spans = vec![Span::styled(
+                "  Dimensions: ",
+                Style::default().fg(colors.fg1),
+            )];
+            for (i, (dim_name, size)) in dims.iter().enumerate() {
+                if i > 0 {
+                    dim_spans.push(Span::styled(" x ", Style::default().fg(colors.fg1)));
                 }
-                lines.push(Line::from(dim_spans));
+                dim_spans.push(Span::styled(
+                    dim_name.to_string(),
+                    Style::default().fg(colors.yellow),
+                ));
+                dim_spans.push(Span::styled("=", Style::default().fg(colors.fg1)));
+                dim_spans.push(Span::styled(
+                    size.to_string(),
+                    Style::default().fg(colors.purple),
+                ));
             }
+            lines.push(Line::from(dim_spans));
         }
     }
 
     // Data type
     if let Some(dtype) = &node.dtype {
-        let clean_type = dtype.replace("NcVariableType::", "").to_lowercase();
         lines.push(Line::from(vec![
             Span::styled("  Data type: ", Style::default().fg(colors.fg1)),
-            Span::styled(clean_type, Style::default().fg(colors.fg0)),
+            Span::styled(clean_dtype(dtype), Style::default().fg(colors.green)),
         ]));
     }
 
@@ -317,7 +317,7 @@ fn format_group_details(node: &DataNode, colors: &ThemeColors) -> Vec<Line<'stat
             let dtype = var
                 .dtype
                 .as_ref()
-                .map(|d| d.replace("NcVariableType::", "").to_lowercase())
+                .map(|d| clean_dtype(d))
                 .unwrap_or_else(|| "unknown".to_string());
 
             let mut var_spans = vec![
@@ -327,24 +327,18 @@ fn format_group_details(node: &DataNode, colors: &ThemeColors) -> Vec<Line<'stat
                 Span::styled(var.name.clone(), Style::default().fg(colors.aqua)),
             ];
 
-            if let Some(dim_str) = var.metadata.get("dims") {
-                if !dim_str.is_empty() {
-                    let dims: Vec<&str> = dim_str.split(", ").collect();
-                    if let Some(shape) = &var.shape {
-                        let dim_info: Vec<String> = dims
-                            .iter()
-                            .enumerate()
-                            .filter_map(|(i, dim_name)| {
-                                shape.get(i).map(|&size| format!("{}={}", dim_name, size))
-                            })
-                            .collect();
-                        if !dim_info.is_empty() {
-                            var_spans.push(Span::styled(
-                                format!(" ({})", dim_info.join(", ")),
-                                Style::default().fg(colors.fg1),
-                            ));
-                        }
-                    }
+            if let (Some(dim_str), Some(shape)) = (var.metadata.get("dims"), &var.shape) {
+                let dims = parse_dimensions(dim_str, shape);
+                if !dims.is_empty() {
+                    let dim_info: String = dims
+                        .iter()
+                        .map(|(name, size)| format!("{}={}", name, size))
+                        .collect::<Vec<_>>()
+                        .join(", ");
+                    var_spans.push(Span::styled(
+                        format!(" ({})", dim_info),
+                        Style::default().fg(colors.fg1),
+                    ));
                 }
             }
 

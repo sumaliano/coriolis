@@ -2,6 +2,7 @@
 
 use super::ExplorerState;
 use crate::data::{DataNode, DatasetInfo};
+use crate::ui::formatters::{clean_dtype, parse_dimensions};
 use crate::ui::ThemeColors;
 use ratatui::{
     layout::Rect,
@@ -12,91 +13,68 @@ use ratatui::{
 };
 use std::path::PathBuf;
 
-/// Build styled spans for a variable node.
-fn build_variable_spans(node: &DataNode, colors: &ThemeColors) -> Vec<Span<'static>> {
-    let mut spans = Vec::new();
-
-    // Icon
-    spans.push(Span::raw("- "));
-
-    // Variable name - bold and colored by data type
-    let var_color = if let Some(dtype) = &node.dtype {
-        let dtype_lower = dtype.to_lowercase();
-        if dtype_lower.contains("float") || dtype_lower.contains("double") {
-            colors.aqua
-        } else if dtype_lower.contains("int")
-            || dtype_lower.contains("short")
-            || dtype_lower.contains("byte")
-        {
-            colors.blue
-        } else if dtype_lower.contains("char") || dtype_lower.contains("string") {
-            colors.purple
-        } else {
-            colors.green
-        }
+/// Get color for a data type.
+fn dtype_color(dtype: Option<&String>, colors: &ThemeColors) -> ratatui::style::Color {
+    let Some(dtype) = dtype else {
+        return colors.green;
+    };
+    let dtype_lower = dtype.to_lowercase();
+    if dtype_lower.contains("float") || dtype_lower.contains("double") {
+        colors.aqua
+    } else if dtype_lower.contains("int") || dtype_lower.contains("short") || dtype_lower.contains("byte") {
+        colors.blue
+    } else if dtype_lower.contains("char") || dtype_lower.contains("string") {
+        colors.purple
     } else {
         colors.green
-    };
+    }
+}
 
-    spans.push(Span::styled(
-        node.name.clone(),
-        Style::default()
-            .fg(var_color)
-            .add_modifier(Modifier::BOLD),
-    ));
+/// Build styled spans for any node type.
+fn build_node_spans(node: &DataNode, colors: &ThemeColors) -> Vec<Span<'static>> {
+    let mut spans = Vec::new();
 
-    // Dimension info: (dim1=size1, dim2=size2)
-    if let Some(dim_str) = node.metadata.get("dims") {
-        if !dim_str.is_empty() {
-            let dims: Vec<&str> = dim_str.split(", ").collect();
-            if let Some(shape) = &node.shape {
+    if node.is_variable() {
+        // Variable: name (dims) [ND] dtype
+        spans.push(Span::styled(
+            node.name.clone(),
+            Style::default()
+                .fg(dtype_color(node.dtype.as_ref(), colors))
+                .add_modifier(Modifier::BOLD),
+        ));
+
+        // Dimension info: (dim1=size1, dim2=size2)
+        if let (Some(dim_str), Some(shape)) = (node.metadata.get("dims"), &node.shape) {
+            let dims = parse_dimensions(dim_str, shape);
+            if !dims.is_empty() {
                 spans.push(Span::styled(" (", Style::default().fg(colors.fg1)));
-
-                for (i, dim_name) in dims.iter().enumerate() {
+                for (i, (dim_name, size)) in dims.iter().enumerate() {
                     if i > 0 {
                         spans.push(Span::styled(", ", Style::default().fg(colors.fg1)));
                     }
-                    if let Some(&size) = shape.get(i) {
-                        // Dimension name in yellow
-                        spans.push(Span::styled(
-                            dim_name.to_string(),
-                            Style::default().fg(colors.yellow),
-                        ));
-                        spans.push(Span::styled("=", Style::default().fg(colors.fg1)));
-                        // Size in purple
-                        spans.push(Span::styled(
-                            size.to_string(),
-                            Style::default().fg(colors.purple),
-                        ));
-                    }
+                    spans.push(Span::styled(dim_name.to_string(), Style::default().fg(colors.yellow)));
+                    spans.push(Span::styled("=", Style::default().fg(colors.fg1)));
+                    spans.push(Span::styled(size.to_string(), Style::default().fg(colors.purple)));
                 }
-
                 spans.push(Span::styled(")", Style::default().fg(colors.fg1)));
             }
-        }
-    }
 
-    // Dimensionality: [ND]
-    if let Some(shape) = &node.shape {
-        let ndim = shape.len();
-        if ndim > 0 {
-            spans.push(Span::styled(" [", Style::default().fg(colors.fg1)));
-            spans.push(Span::styled(
-                format!("{}", ndim),
-                Style::default().fg(colors.orange),
-            ));
-            spans.push(Span::styled("D]", Style::default().fg(colors.fg1)));
+            // Dimensionality: [ND]
+            if !shape.is_empty() {
+                spans.push(Span::styled(format!(" [{}D]", shape.len()), Style::default().fg(colors.orange)));
+            }
         }
-    }
 
-    // Data type - in a complementary color
-    if let Some(dtype) = &node.dtype {
-        let clean_type = dtype.replace("NcVariableType::", "").to_lowercase();
-        spans.push(Span::raw(" "));
-        spans.push(Span::styled(
-            clean_type,
-            Style::default().fg(colors.green),
-        ));
+        // Data type
+        if let Some(dtype) = &node.dtype {
+            spans.push(Span::styled(format!(" {}", clean_dtype(dtype)), Style::default().fg(colors.green)));
+        }
+    } else {
+        // Group/Root: icon name (count)
+        let icon = if node.node_type == crate::data::NodeType::Root { "🏠 " } else { "📂 " };
+        spans.push(Span::styled(icon.to_string(), Style::default().fg(colors.fg0)));
+        spans.push(Span::styled(node.name.clone(), Style::default().fg(colors.fg0)));
+        spans.push(Span::styled(format!(" ({})", node.children.len()), Style::default().fg(colors.fg1)));
     }
 
     spans
@@ -142,24 +120,18 @@ pub fn draw_tree(
                 "  "
             };
 
+            let mut spans = vec![Span::raw(indent), Span::raw(expand_icon)];
+            spans.extend(build_node_spans(&item.node, colors));
             let line = if idx == cursor {
-                // Cursor highlighting - entire line
-                let text = format!("{}{}{}", indent, expand_icon, item.node.display_name());
-                Line::from(text).style(
+                // Cursor highlighting - apply to entire line
+                Line::from(spans).style(
                     Style::default()
                         .fg(colors.bg0)
                         .bg(colors.yellow)
                         .add_modifier(Modifier::BOLD),
                 )
-            } else if item.node.is_variable() {
-                // Build styled spans for variable
-                let mut spans = vec![Span::raw(indent), Span::raw(expand_icon)];
-                spans.extend(build_variable_spans(&item.node, colors));
-                Line::from(spans)
             } else {
-                // Groups and root - normal styling
-                let text = format!("{}{}{}", indent, expand_icon, item.node.display_name());
-                Line::from(text).style(Style::default().fg(colors.fg0))
+                Line::from(spans)
             };
 
             ListItem::new(line)
