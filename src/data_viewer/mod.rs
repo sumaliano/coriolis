@@ -95,6 +95,51 @@ pub struct SlicingState {
     pub active_dim_selector: Option<usize>,
 }
 
+impl SlicingState {
+    /// Create a new slicing state for a variable.
+    pub fn new(ndim: usize, view_mode: ViewMode) -> Self {
+        let mut state = Self {
+            slice_indices: vec![0; ndim],
+            display_dims: if ndim >= 2 { (ndim - 2, ndim - 1) } else { (0, 0) },
+            active_dim_selector: None,
+        };
+        state.update_active_selector(ndim, view_mode);
+        state
+    }
+
+    /// Find the first valid slice dimension.
+    fn first_slice_dim(&self, ndim: usize, is_1d: bool) -> Option<usize> {
+        (0..ndim).find(|&i| {
+            if is_1d {
+                i != self.display_dims.0
+            } else {
+                i != self.display_dims.0 && i != self.display_dims.1
+            }
+        })
+    }
+
+    /// Update active selector to be valid, or set to first available slice dimension.
+    pub fn update_active_selector(&mut self, ndim: usize, view_mode: ViewMode) {
+        let is_1d = matches!(view_mode, ViewMode::Plot1D);
+
+        // Check if current active selector is still valid
+        if let Some(active) = self.active_dim_selector {
+            let is_valid = if is_1d {
+                active < ndim && active != self.display_dims.0
+            } else {
+                active < ndim && active != self.display_dims.0 && active != self.display_dims.1
+            };
+
+            if is_valid {
+                return; // Keep current selector
+            }
+        }
+
+        // Set to first available slice dimension
+        self.active_dim_selector = self.first_slice_dim(ndim, is_1d);
+    }
+}
+
 /// State for the data viewer.
 #[derive(Debug, Clone)]
 pub struct DataViewerState {
@@ -153,20 +198,8 @@ impl DataViewerState {
     pub fn load_variable(&mut self, var: LoadedVariable) {
         let ndim = var.ndim();
 
-        // Initialize slicing state
-        self.slicing = SlicingState {
-            slice_indices: vec![0; ndim],
-            display_dims: if ndim >= 2 {
-                (ndim - 2, ndim - 1)
-            } else {
-                (0, 0)
-            },
-            active_dim_selector: if ndim > 2 {
-                (0..ndim).find(|&i| i != ndim.saturating_sub(2) && i != ndim.saturating_sub(1))
-            } else {
-                None
-            },
-        };
+        // Initialize slicing state with active selector already set
+        self.slicing = SlicingState::new(ndim, self.view_mode);
 
         // Default to scaled data display
         self.apply_scale_offset = true;
@@ -198,6 +231,10 @@ impl DataViewerState {
     /// Cycle view mode.
     pub fn cycle_view_mode(&mut self) {
         self.view_mode = self.view_mode.next();
+        // Update active selector for the new view mode (preserves slice positions)
+        if let Some(ref var) = self.variable {
+            self.slicing.update_active_selector(var.ndim(), self.view_mode);
+        }
     }
 
     /// Cycle to next color palette.
@@ -472,6 +509,8 @@ impl DataViewerState {
                 std::mem::swap(&mut self.heat_cursor_row, &mut self.heat_cursor_col);
                 // Clamp cursor to new dimensions
                 self.clamp_heat_cursor();
+                // Update active selector after rotation
+                self.slicing.update_active_selector(ndim, self.view_mode);
             }
         }
     }
@@ -516,18 +555,8 @@ impl DataViewerState {
             // Clamp cursor to new dimensions
             self.clamp_heat_cursor();
 
-            // Update active selector if it's now a display dimension
-            if let Some(active) = self.slicing.active_dim_selector {
-                if active == next {
-                    self.slicing.active_dim_selector = (0..ndim).find(|&i| {
-                        if is_1d {
-                            i != self.slicing.display_dims.0
-                        } else {
-                            i != self.slicing.display_dims.0 && i != self.slicing.display_dims.1
-                        }
-                    });
-                }
-            }
+            // Update active selector after changing display dimension
+            self.slicing.update_active_selector(ndim, self.view_mode);
         }
     }
 

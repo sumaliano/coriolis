@@ -41,8 +41,10 @@ pub fn draw_data_viewer(f: &mut Frame<'_>, state: &DataViewerState, colors: &The
     }
 
     if let Some(ref var) = state.variable {
-        // Layout: header, status (if any), [stats sidebar | main content], dimension selectors (if 3D+), footer
-        let has_selectors = var.ndim() > 2;
+        // Layout: header, status (if any), [stats sidebar | main content], dimension selectors (if needed), footer
+        // Show selectors for: 3D+ variables, OR 2D variables in 1D plot mode
+        let has_selectors = var.ndim() > 2
+            || (var.ndim() == 2 && matches!(state.view_mode, ViewMode::Plot1D));
         let has_status = state.status_message.is_some();
 
         let mut constraints = vec![
@@ -195,15 +197,7 @@ fn draw_stats_sidebar(
     var: &LoadedVariable,
     colors: &ThemeColors,
 ) {
-    let mut lines = vec![
-        Line::from(Span::styled(
-            "Statistics",
-            Style::default()
-                .fg(colors.green)
-                .add_modifier(Modifier::BOLD),
-        )),
-        Line::from(""),
-    ];
+    let mut lines = vec![];
 
     if let Some((min, max)) = var.min_max() {
         lines.push(Line::from(vec![
@@ -235,9 +229,7 @@ fn draw_stats_sidebar(
     if valid < total {
         lines.push(Line::from(""));
         lines.push(Line::from(vec![
-            Span::styled("Valid:", Style::default().fg(colors.fg1)),
-        ]));
-        lines.push(Line::from(vec![
+            Span::styled("Valid: ", Style::default().fg(colors.fg1)),
             Span::styled(
                 format!("{:.1}%", (valid as f64 / total as f64) * 100.0),
                 Style::default().fg(colors.orange),
@@ -245,11 +237,15 @@ fn draw_stats_sidebar(
         ]));
     }
 
-    let paragraph = Paragraph::new(lines).block(
-        Block::default()
-            .borders(Borders::RIGHT)
-            .border_style(Style::default().fg(colors.bg2)),
-    );
+    let paragraph = Paragraph::new(lines)
+        .block(
+            Block::default()
+                .title(" Statistics ")
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(colors.bg2))
+                .style(Style::default().bg(colors.bg0)),
+        )
+        .style(Style::default().fg(colors.fg0));
 
     f.render_widget(paragraph, area);
 }
@@ -721,7 +717,7 @@ fn draw_heatmap_view(
     let col_coord = var.get_coord_label(col_dim, cursor_col);
 
     let title = format!(
-        " {} @ {}={}, {}={}: {} | {} ",
+        " {} @ {}={}, {}={}: {} | Colormap: {} ",
         var.name,
         dim1_name,
         row_coord,
@@ -1107,15 +1103,15 @@ fn draw_footer(f: &mut Frame<'_>, area: Rect, state: &DataViewerState, colors: &
 
     let help = match state.view_mode {
         ViewMode::Plot1D => format!(
-            "Tab: View | C: Palette | Y: Dim | S: Slice | PgUp/Dn: Slice | ←/→: Cursor{} | Esc",
+            "Tab: Mode | C: Colormap | Y: Axis | S: Slice Dim | PgUp/Dn: Change | ←/→: Navigate{} | Esc: Close",
             scale_hint
         ),
         ViewMode::Table => format!(
-            "Tab: View | C: Palette | R: Rotate | Y/X: Dims | S: Slice | Arrows: Pan{} | Esc",
+            "Tab: Mode | C: Colormap | R: Rotate | Y/X: Axes | S: Slice Dim | Arrows: Pan{} | Esc: Close",
             scale_hint
         ),
         ViewMode::Heatmap => format!(
-            "Tab: View | C: Palette | R: Rotate | Y/X: Dims | S: Slice | Arrows: Move{} | Esc",
+            "Tab: Mode | C: Colormap | R: Rotate | Y/X: Axes | S: Slice Dim | Arrows: Move{} | Esc: Close",
             scale_hint
         ),
     };
