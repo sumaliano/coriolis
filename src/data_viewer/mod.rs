@@ -410,44 +410,35 @@ impl DataViewerState {
             let min_dims = if is_1d { 2 } else { 3 };
 
             if ndim >= min_dims {
+                // Collect all non-display dimensions
+                let slice_dims: Vec<usize> = (0..ndim)
+                    .filter(|&i| {
+                        if is_1d {
+                            i != self.slicing.display_dims.0
+                        } else {
+                            i != self.slicing.display_dims.0 && i != self.slicing.display_dims.1
+                        }
+                    })
+                    .collect();
+
+                if slice_dims.is_empty() {
+                    return;
+                }
+
                 match self.slicing.active_dim_selector {
                     None => {
-                        // Find first non-display dimension
-                        for i in 0..ndim {
-                            let is_display = if is_1d {
-                                i == self.slicing.display_dims.0
-                            } else {
-                                i == self.slicing.display_dims.0 || i == self.slicing.display_dims.1
-                            };
-
-                            if !is_display {
-                                self.slicing.active_dim_selector = Some(i);
-                                break;
-                            }
-                        }
+                        // Select first slice dimension
+                        self.slicing.active_dim_selector = Some(slice_dims[0]);
                     },
                     Some(current) => {
-                        // Find next non-display dimension
-                        let mut found_current = false;
-                        let mut next = None;
-                        for i in 0..ndim {
-                            if i == current {
-                                found_current = true;
-                            } else if found_current {
-                                let is_display = if is_1d {
-                                    i == self.slicing.display_dims.0
-                                } else {
-                                    i == self.slicing.display_dims.0
-                                        || i == self.slicing.display_dims.1
-                                };
-
-                                if !is_display {
-                                    next = Some(i);
-                                    break;
-                                }
-                            }
+                        // Find current in list and select next (wrap around)
+                        if let Some(pos) = slice_dims.iter().position(|&d| d == current) {
+                            let next_pos = (pos + 1) % slice_dims.len();
+                            self.slicing.active_dim_selector = Some(slice_dims[next_pos]);
+                        } else {
+                            // Current not in list (shouldn't happen), select first
+                            self.slicing.active_dim_selector = Some(slice_dims[0]);
                         }
-                        self.slicing.active_dim_selector = next;
                     },
                 }
             }

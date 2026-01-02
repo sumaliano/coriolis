@@ -90,6 +90,7 @@ impl ExplorerState {
     pub fn cursor_up(&mut self) {
         if self.cursor > 0 {
             self.cursor -= 1;
+            self.preview_scroll = 0;
         }
     }
 
@@ -97,6 +98,7 @@ impl ExplorerState {
     pub fn cursor_down(&mut self) {
         if self.cursor + 1 < self.items.len() {
             self.cursor += 1;
+            self.preview_scroll = 0;
         }
     }
 

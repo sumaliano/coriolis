@@ -41,17 +41,17 @@ pub fn draw_data_viewer(f: &mut Frame<'_>, state: &DataViewerState, colors: &The
     }
 
     if let Some(ref var) = state.variable {
-        // Layout: header, status (if any), main content, dimension selectors (if 3D+), footer
+        // Layout: header, status (if any), [stats sidebar | main content], dimension selectors (if 3D+), footer
         let has_selectors = var.ndim() > 2;
         let has_status = state.status_message.is_some();
 
         let mut constraints = vec![
-            Constraint::Length(3), // Header (reduced since statistics moved to Details pane)
+            Constraint::Length(3), // Header (name, shape)
         ];
         if has_status {
             constraints.push(Constraint::Length(1)); // Status
         }
-        constraints.push(Constraint::Min(5)); // Content
+        constraints.push(Constraint::Min(5)); // Content area (stats sidebar + main view)
         if has_selectors {
             constraints.push(Constraint::Length(4)); // Dimension selectors
         }
@@ -74,11 +74,21 @@ pub fn draw_data_viewer(f: &mut Frame<'_>, state: &DataViewerState, colors: &The
             chunk_idx += 1;
         }
 
+        // Split content area: stats sidebar on left, main view on right
+        let content_area = chunks[chunk_idx];
+        let content_split = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([Constraint::Length(16), Constraint::Min(20)])
+            .split(content_area);
+
+        // Draw statistics sidebar
+        draw_stats_sidebar(f, content_split[0], var, colors);
+
         // Draw main content based on view mode
         match state.view_mode {
-            ViewMode::Table => draw_table_view(f, chunks[chunk_idx], state, var, colors),
-            ViewMode::Plot1D => draw_plot1d_view(f, chunks[chunk_idx], state, var, colors),
-            ViewMode::Heatmap => draw_heatmap_view(f, chunks[chunk_idx], state, var, colors),
+            ViewMode::Table => draw_table_view(f, content_split[1], state, var, colors),
+            ViewMode::Plot1D => draw_plot1d_view(f, content_split[1], state, var, colors),
+            ViewMode::Heatmap => draw_heatmap_view(f, content_split[1], state, var, colors),
         }
         chunk_idx += 1;
 
@@ -177,6 +187,71 @@ fn draw_status(f: &mut Frame<'_>, area: Rect, state: &DataViewerState, colors: &
             .alignment(Alignment::Center);
         f.render_widget(paragraph, area);
     }
+}
+
+fn draw_stats_sidebar(
+    f: &mut Frame<'_>,
+    area: Rect,
+    var: &LoadedVariable,
+    colors: &ThemeColors,
+) {
+    let mut lines = vec![
+        Line::from(Span::styled(
+            "Statistics",
+            Style::default()
+                .fg(colors.green)
+                .add_modifier(Modifier::BOLD),
+        )),
+        Line::from(""),
+    ];
+
+    if let Some((min, max)) = var.min_max() {
+        lines.push(Line::from(vec![
+            Span::styled("Min:  ", Style::default().fg(colors.fg1)),
+            Span::styled(format_stat_value(min), Style::default().fg(colors.aqua)),
+        ]));
+        lines.push(Line::from(vec![
+            Span::styled("Max:  ", Style::default().fg(colors.fg1)),
+            Span::styled(format_stat_value(max), Style::default().fg(colors.aqua)),
+        ]));
+    }
+
+    if let Some(mean) = var.mean_value() {
+        lines.push(Line::from(vec![
+            Span::styled("Mean: ", Style::default().fg(colors.fg1)),
+            Span::styled(format_stat_value(mean), Style::default().fg(colors.aqua)),
+        ]));
+    }
+
+    if let Some(std) = var.std_value() {
+        lines.push(Line::from(vec![
+            Span::styled("Std:  ", Style::default().fg(colors.fg1)),
+            Span::styled(format_stat_value(std), Style::default().fg(colors.aqua)),
+        ]));
+    }
+
+    let valid = var.valid_count();
+    let total = var.total_elements();
+    if valid < total {
+        lines.push(Line::from(""));
+        lines.push(Line::from(vec![
+            Span::styled("Valid:", Style::default().fg(colors.fg1)),
+        ]));
+        lines.push(Line::from(vec![
+            Span::styled(
+                format!("{:.1}%", (valid as f64 / total as f64) * 100.0),
+                Style::default().fg(colors.orange),
+            ),
+        ]));
+    }
+
+    let paragraph = Paragraph::new(lines).block(
+        Block::default()
+            .borders(Borders::RIGHT)
+            .border_style(Style::default().fg(colors.bg2)),
+    );
+
+    f.render_widget(paragraph, area);
 }
 
 fn draw_table_view(

@@ -1,26 +1,21 @@
 //! Details pane formatting for tree nodes.
 
-use crate::data::{read_variable, DataNode};
-use crate::ui::formatters::{clean_dtype, format_number, format_stat_value, parse_dimensions};
+use crate::data::DataNode;
+use crate::ui::formatters::{clean_dtype, format_number, parse_dimensions};
 use crate::ui::ThemeColors;
 use ratatui::{
     style::{Modifier, Style},
     text::{Line, Span},
 };
-use std::path::PathBuf;
 
 /// Format node details for display in the details pane.
-pub fn format_node_details(
-    node: &DataNode,
-    colors: &ThemeColors,
-    file_path: Option<&PathBuf>,
-) -> Vec<Line<'static>> {
+pub fn format_node_details(node: &DataNode, colors: &ThemeColors) -> Vec<Line<'static>> {
     if node.is_group() {
         return format_group_details(node, colors);
     }
 
     if node.is_variable() {
-        return format_variable_details(node, colors, file_path);
+        return format_variable_details(node, colors);
     }
 
     // Generic node format
@@ -40,11 +35,7 @@ pub fn format_node_details(
 }
 
 /// Format variable node details.
-fn format_variable_details(
-    node: &DataNode,
-    colors: &ThemeColors,
-    file_path: Option<&PathBuf>,
-) -> Vec<Line<'static>> {
+fn format_variable_details(node: &DataNode, colors: &ThemeColors) -> Vec<Line<'static>> {
     let mut lines = vec![
         Line::from(Span::styled(
             node.name.clone(),
@@ -121,86 +112,6 @@ fn format_variable_details(
     }
 
     lines.push(Line::from(""));
-
-    // Statistics section - load variable if small enough
-    if let Some(path) = file_path {
-        if let Some(shape) = &node.shape {
-            let total_elements: usize = shape.iter().product();
-            if total_elements > 0 && total_elements < 10_000_000 {
-                if let Ok(var) = read_variable(path, &node.path) {
-                    lines.push(Line::from(Span::styled(
-                        "Statistics",
-                        Style::default()
-                            .fg(colors.green)
-                            .add_modifier(Modifier::BOLD),
-                    )));
-
-                    if let Some((min_val, max_val)) = var.min_max() {
-                        lines.push(Line::from(vec![
-                            Span::styled("  Min: ", Style::default().fg(colors.fg1)),
-                            Span::styled(
-                                format_stat_value(min_val),
-                                Style::default().fg(colors.green),
-                            ),
-                        ]));
-                        lines.push(Line::from(vec![
-                            Span::styled("  Max: ", Style::default().fg(colors.fg1)),
-                            Span::styled(
-                                format_stat_value(max_val),
-                                Style::default().fg(colors.green),
-                            ),
-                        ]));
-                    }
-
-                    if let Some(mean_val) = var.mean_value() {
-                        lines.push(Line::from(vec![
-                            Span::styled("  Mean: ", Style::default().fg(colors.fg1)),
-                            Span::styled(
-                                format_stat_value(mean_val),
-                                Style::default().fg(colors.green),
-                            ),
-                        ]));
-                    }
-
-                    if let Some(std_val) = var.std_value() {
-                        lines.push(Line::from(vec![
-                            Span::styled("  Std Dev: ", Style::default().fg(colors.fg1)),
-                            Span::styled(
-                                format_stat_value(std_val),
-                                Style::default().fg(colors.green),
-                            ),
-                        ]));
-                    }
-
-                    let total = var.total_elements();
-                    let valid = var.valid_count();
-                    if valid < total {
-                        lines.push(Line::from(vec![
-                            Span::styled("  Valid: ", Style::default().fg(colors.fg1)),
-                            Span::styled(
-                                format!("{} / {} ({:.1}%)", valid, total, (valid as f64 / total as f64) * 100.0),
-                                Style::default().fg(colors.green),
-                            ),
-                        ]));
-                    }
-
-                    lines.push(Line::from(""));
-                }
-            } else if total_elements >= 10_000_000 {
-                lines.push(Line::from(Span::styled(
-                    "Statistics",
-                    Style::default()
-                        .fg(colors.green)
-                        .add_modifier(Modifier::BOLD),
-                )));
-                lines.push(Line::from(Span::styled(
-                    "  (Variable too large - use data viewer)",
-                    Style::default().fg(colors.fg1),
-                )));
-                lines.push(Line::from(""));
-            }
-        }
-    }
 
     // Attributes
     if !node.attributes.is_empty() {

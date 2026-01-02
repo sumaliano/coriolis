@@ -87,7 +87,7 @@ pub fn draw(f: &mut Frame<'_>, app: &mut App) {
 /// Draw the details pane.
 fn draw_details(f: &mut Frame<'_>, app: &App, area: Rect, colors: &ThemeColors) {
     let lines = if let Some(node) = app.current_node() {
-        details::format_node_details(node, colors, app.file_path.as_ref())
+        details::format_node_details(node, colors)
     } else {
         vec![Line::from("Select a node to view details")]
     };
