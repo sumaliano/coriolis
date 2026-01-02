@@ -120,16 +120,24 @@ pub fn draw_tree(
                 "  "
             };
 
+            let is_cursor = idx == cursor;
             let mut spans = vec![Span::raw(indent), Span::raw(expand_icon)];
             spans.extend(build_node_spans(&item.node, colors));
-            let line = if idx == cursor {
-                // Cursor highlighting - apply to entire line
-                Line::from(spans).style(
-                    Style::default()
-                        .fg(colors.bg0)
-                        .bg(colors.yellow)
-                        .add_modifier(Modifier::BOLD),
-                )
+
+            let line = if is_cursor {
+                // Cursor highlighting - darken all span colors for readability on yellow background
+                let darkened_spans: Vec<Span<'static>> = spans
+                    .into_iter()
+                    .map(|span| {
+                        let mut style = span.style;
+                        // Set background to yellow and use dark foreground
+                        style = style.bg(colors.yellow);
+                        // Use black/dark foreground for readability, preserve bold if present
+                        style = style.fg(colors.bg0);
+                        Span::styled(span.content, style.add_modifier(Modifier::BOLD))
+                    })
+                    .collect();
+                Line::from(darkened_spans)
             } else {
                 Line::from(spans)
             };
