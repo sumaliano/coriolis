@@ -41,7 +41,7 @@ pub fn draw_data_viewer(f: &mut Frame<'_>, state: &DataViewerState, colors: &The
     }
 
     if let Some(ref var) = state.variable {
-        // Layout: header, status (if any), [stats sidebar | main content], dimension selectors (if needed), footer
+        // Layout: header, status (if any), [left sidebar (stats + selectors) | main content], footer
         // Show selectors for: 3D+ variables, OR 2D variables in 1D plot mode
         let has_selectors = var.ndim() > 2
             || (var.ndim() == 2 && matches!(state.view_mode, ViewMode::Plot1D));
@@ -53,10 +53,7 @@ pub fn draw_data_viewer(f: &mut Frame<'_>, state: &DataViewerState, colors: &The
         if has_status {
             constraints.push(Constraint::Length(1)); // Status
         }
-        constraints.push(Constraint::Min(5)); // Content area (stats sidebar + main view)
-        if has_selectors {
-            constraints.push(Constraint::Length(4)); // Dimension selectors
-        }
+        constraints.push(Constraint::Min(5)); // Content area (left sidebar + main view)
         constraints.push(Constraint::Length(2)); // Footer
 
         let chunks = Layout::default()
@@ -76,15 +73,26 @@ pub fn draw_data_viewer(f: &mut Frame<'_>, state: &DataViewerState, colors: &The
             chunk_idx += 1;
         }
 
-        // Split content area: stats sidebar on left, main view on right
+        // Split content area: left sidebar on left, main view on right
         let content_area = chunks[chunk_idx];
         let content_split = Layout::default()
             .direction(Direction::Horizontal)
-            .constraints([Constraint::Length(16), Constraint::Min(20)])
+            .constraints([Constraint::Length(20), Constraint::Min(20)])
             .split(content_area);
 
-        // Draw statistics sidebar
-        draw_stats_sidebar(f, content_split[0], var, colors);
+        // Left sidebar: statistics on top, dimension selectors below (if needed)
+        let sidebar_area = content_split[0];
+        if has_selectors {
+            let sidebar_split = Layout::default()
+                .direction(Direction::Vertical)
+                .constraints([Constraint::Min(8), Constraint::Min(6)])
+                .split(sidebar_area);
+
+            draw_stats_sidebar(f, sidebar_split[0], var, colors);
+            draw_dimension_selectors(f, sidebar_split[1], state, var, colors);
+        } else {
+            draw_stats_sidebar(f, sidebar_area, var, colors);
+        }
 
         // Draw main content based on view mode
         match state.view_mode {
@@ -93,12 +101,6 @@ pub fn draw_data_viewer(f: &mut Frame<'_>, state: &DataViewerState, colors: &The
             ViewMode::Heatmap => draw_heatmap_view(f, content_split[1], state, var, colors),
         }
         chunk_idx += 1;
-
-        // Draw dimension selectors for 3D+ data
-        if has_selectors {
-            draw_dimension_selectors(f, chunks[chunk_idx], state, var, colors);
-            chunk_idx += 1;
-        }
 
         draw_footer(f, chunks[chunk_idx], state, colors);
     }
@@ -974,12 +976,14 @@ fn draw_dimension_selectors(
 ) {
     let mut lines = Vec::new();
 
-    // First line: Display dimensions with coordinate range
-    let mut display_spans = vec![Span::styled("Display: ", Style::default().fg(colors.green))];
+    // Display dimensions - show each on its own line for vertical layout
+    lines.push(Line::from(Span::styled(
+        "Display:",
+        Style::default().fg(colors.green),
+    )));
 
     match state.view_mode {
         ViewMode::Plot1D => {
-            // 1D plot shows one dimension with range
             let dim_idx = state.slicing.display_dims.0;
             let dim_name = var
                 .dim_names
@@ -988,22 +992,12 @@ fn draw_dimension_selectors(
                 .unwrap_or("?");
             let dim_size = var.shape.get(dim_idx).copied().unwrap_or(0);
 
-            // Show coordinate range if available
-            let range_str = if let Some(coord) = var.get_coordinate(dim_idx) {
-                let first = coord.format_value(0);
-                let last = coord.format_value(dim_size.saturating_sub(1));
-                format!(" ({}→{})", first, last)
-            } else {
-                String::new()
-            };
-
-            display_spans.push(Span::styled(
-                format!("{}[{}]{}", dim_name, dim_size, range_str),
+            lines.push(Line::from(Span::styled(
+                format!(" {}[{}]", dim_name, dim_size),
                 Style::default().fg(colors.aqua),
-            ));
+            )));
         },
         ViewMode::Table | ViewMode::Heatmap => {
-            // 2D views show both dimensions
             for (label, dim_idx) in [
                 ("Y", state.slicing.display_dims.0),
                 ("X", state.slicing.display_dims.1),
@@ -1015,18 +1009,13 @@ fn draw_dimension_selectors(
                     .unwrap_or("?");
                 let dim_size = var.shape.get(dim_idx).copied().unwrap_or(0);
 
-                display_spans.push(Span::styled(
-                    format!("{}: {}[{}] ", label, dim_name, dim_size),
-                    Style::default().fg(colors.aqua),
-                ));
+                lines.push(Line::from(vec![
+                    Span::styled(format!(" {}: ", label), Style::default().fg(colors.fg1)),
+                    Span::styled(format!("{}[{}]", dim_name, dim_size), Style::default().fg(colors.aqua)),
+                ]));
             }
         },
     }
-
-    lines.push(Line::from(display_spans));
-
-    // Second line: Slice selectors with coordinate values
-    let mut slice_spans = vec![Span::styled("Slices: ", Style::default().fg(colors.green))];
 
     let is_1d = matches!(state.view_mode, ViewMode::Plot1D);
 
@@ -1039,6 +1028,12 @@ fn draw_dimension_selectors(
     });
 
     if has_slices {
+        lines.push(Line::from("")); // Empty line separator
+        lines.push(Line::from(Span::styled(
+            "Slices:",
+            Style::default().fg(colors.green),
+        )));
+
         for (i, (dim_name, &size)) in var.dim_names.iter().zip(var.shape.iter()).enumerate() {
             let should_skip = if is_1d {
                 i == state.slicing.display_dims.0
@@ -1053,9 +1048,8 @@ fn draw_dimension_selectors(
             let is_active = state.slicing.active_dim_selector == Some(i);
             let idx = state.slicing.slice_indices.get(i).copied().unwrap_or(0);
 
-            // Get coordinate value if available
-            let coord_label = var.get_coord_label(i, idx);
-            let has_coord = var.get_coordinate(i).is_some();
+            // Compact format: dimname=idx/max
+            let label = format!(" {}={}/{}", dim_name, idx, size - 1);
 
             let style = if is_active {
                 Style::default()
@@ -1066,29 +1060,19 @@ fn draw_dimension_selectors(
                 Style::default().fg(colors.fg0)
             };
 
-            // Show both index and coordinate value if available
-            let label = if has_coord {
-                format!(" {}={} ({}/{}) ", dim_name, coord_label, idx, size - 1)
-            } else {
-                format!(" {}={}/{} ", dim_name, idx, size - 1)
-            };
-
-            slice_spans.push(Span::styled(label, style));
+            lines.push(Line::from(Span::styled(label, style)));
         }
-        lines.push(Line::from(slice_spans));
-    } else {
-        slice_spans.push(Span::styled(
-            "(2D data - no slices)",
-            Style::default().fg(colors.gray),
-        ));
-        lines.push(Line::from(slice_spans));
     }
 
-    let paragraph = Paragraph::new(lines).alignment(Alignment::Center).block(
-        Block::default()
-            .borders(Borders::TOP)
-            .border_style(Style::default().fg(colors.bg2)),
-    );
+    let paragraph = Paragraph::new(lines)
+        .block(
+            Block::default()
+                .title(" Dimensions ")
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(colors.bg2))
+                .style(Style::default().bg(colors.bg0)),
+        )
+        .style(Style::default().fg(colors.fg0));
 
     f.render_widget(paragraph, area);
 }
