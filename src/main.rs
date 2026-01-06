@@ -132,16 +132,14 @@ fn run_app<B: ratatui::backend::Backend>(terminal: &mut Terminal<B>, mut app: Ap
                         // Contextual arrows/hjkl
                         // Table: pan; Plot1D: move cursor; Heatmap: move crosshair
                         (KeyModifiers::NONE, KeyCode::Up)
-                        | (KeyModifiers::NONE, KeyCode::Char('k')) => {
-                            match app.data_viewer.view_mode {
+                        | (KeyModifiers::NONE, KeyCode::Char('k')) => { match app.data_viewer.view_mode {
                                 ViewMode::Table => app.data_viewer.scroll_up(1),
                                 ViewMode::Heatmap => app.data_viewer.move_heat_cursor(-1, 0),
                                 ViewMode::Plot1D => { /* reserved for future y-zoom */ },
                             }
                         },
                         (KeyModifiers::NONE, KeyCode::Down)
-                        | (KeyModifiers::NONE, KeyCode::Char('j')) => {
-                            match app.data_viewer.view_mode {
+                        | (KeyModifiers::NONE, KeyCode::Char('j')) => { match app.data_viewer.view_mode {
                                 ViewMode::Table => app.data_viewer.scroll_down(1),
                                 ViewMode::Heatmap => app.data_viewer.move_heat_cursor(1, 0),
                                 ViewMode::Plot1D => { /* reserved for future y-zoom */ },
@@ -211,7 +209,6 @@ fn run_app<B: ratatui::backend::Backend>(terminal: &mut Terminal<B>, mut app: Ap
                             app.data_viewer
                                 .set_status("Rotated Y ↔ X dimensions".to_string());
                         },
-                        // Simplified UI: removed 1D options (auto/log/agg) and heatmap range/zoom/pan toggles
                         // Clipboard export remains below
                         (KeyModifiers::CONTROL, KeyCode::Char('c')) => {
                             app.data_viewer.copy_visible_to_clipboard();
@@ -381,13 +378,15 @@ fn run_app<B: ratatui::backend::Backend>(terminal: &mut Terminal<B>, mut app: Ap
                         app.explorer.goto_last();
                         app.explorer.preview_scroll = 0;
                     },
-                    (KeyModifiers::CONTROL, KeyCode::Char('f')) => {
+                    (KeyModifiers::CONTROL, KeyCode::Char('f'))
+                    | (KeyModifiers::NONE, KeyCode::PageDown) => {
                         for _ in 0..15 {
                             app.explorer.cursor_down();
                         }
                         app.explorer.preview_scroll = 0;
                     },
-                    (KeyModifiers::CONTROL, KeyCode::Char('b')) => {
+                    (KeyModifiers::CONTROL, KeyCode::Char('b'))
+                    | (KeyModifiers::NONE, KeyCode::PageUp) => {
                         for _ in 0..15 {
                             app.explorer.cursor_up();
                         }

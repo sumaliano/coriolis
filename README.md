@@ -1,9 +1,5 @@
 # Coriolis
 
-[![CI](https://github.com/jsilva/coriolis/actions/workflows/ci.yml/badge.svg)](https://github.com/jsilva/coriolis/actions/workflows/ci.yml)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Rust](https://img.shields.io/badge/rust-1.70%2B-blue.svg)](https://www.rust-lang.org)
-
 A fast, terminal-based NetCDF data explorer and viewer with vim-style navigation.
 
 *Named after the Coriolis effect — fundamental in understanding Earth's atmospheric and oceanic circulation.*
@@ -228,4 +224,4 @@ This project is licensed under the MIT License — see the [LICENSE](LICENSE) fi
 
 ## Why "Coriolis"?
 
-The Coriolis effect is a fundamental concept in atmospheric and oceanic sciences — fields that heavily rely on NetCDF for data storage and exchange. This tool aims to make exploring that scientific data as intuitive as the physical phenomena it represents.
+The Coriolis effect is a fundamental concept in atmospheric and oceanic sciences — fields that heavily rely on NetCDF for data storage and exchange. This tool aims to make exploring that scientific data as intuitive as the physical phenomena it represents ;).

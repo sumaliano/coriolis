@@ -802,7 +802,8 @@ fn draw_heatmap_view(
     // Units label if available
     if let Some(units) = var.units() {
         let unit_label = format!("[{}]", units);
-        let unit_x = inner.x + inner.width / 2 - unit_label.len() as u16 / 2;
+        // let unit_x = inner.x + inner.width / 2 - unit_label.len() as u16 / 2;
+        let unit_x = max_x + max_label.len() as u16 + 1;
         for (i, ch) in unit_label.chars().enumerate() {
             let x = unit_x + i as u16;
             if x < inner.x + inner.width {
