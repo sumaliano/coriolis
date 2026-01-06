@@ -1099,25 +1099,28 @@ fn draw_dimension_selectors(
 }
 
 fn draw_footer(f: &mut Frame<'_>, area: Rect, state: &DataViewerState, colors: &ThemeColors) {
-    // Build help string - add O for scale/offset if applicable
+    // Build help string - add scale/offset hint if applicable
     let scale_hint = if state.has_scale_offset() {
-        " | O: Raw/Scaled"
+        " | Scale: O"
     } else {
         ""
     };
 
+    // Show the next view mode that Tab will switch to
+    let next_mode = state.view_mode.next().name();
+
     let help = match state.view_mode {
         ViewMode::Plot1D => format!(
-            "Tab: Mode | C: Colormap | Y: Axis | S: Slice Dim | PgUp/Dn: Change | ←/→: Navigate{} | Esc: Close",
-            scale_hint
+            "{}: Tab | Colors: C | Y-Axis: Y | Slice: S PgUp/Dn | Navigate: ←→{} | Close: Esc",
+            next_mode, scale_hint
         ),
         ViewMode::Table => format!(
-            "Tab: Mode | C: Colormap | R: Rotate | Y/X: Axes | S: Slice Dim | Arrows: Pan{} | Esc: Close",
-            scale_hint
+            "{}: Tab | Colors: C | Rotate: R | Axes: YX | Slice: S | Pan: hjkl/↑↓←→{} | Close: Esc",
+            next_mode, scale_hint
         ),
         ViewMode::Heatmap => format!(
-            "Tab: Mode | C: Colormap | R: Rotate | Y/X: Axes | S: Slice Dim | Arrows: Move{} | Esc: Close",
-            scale_hint
+            "{}: Tab | Colors: C | Rotate: R | Axes: YX | Slice: S | Move: hjkl/↑↓←→{} | Close: Esc",
+            next_mode, scale_hint
         ),
     };
     let paragraph = Paragraph::new(help)

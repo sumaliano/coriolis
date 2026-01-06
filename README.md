@@ -1,10 +1,13 @@
 # Coriolis
 
+[![Release](https://img.shields.io/github/v/release/jsilva/coriolis)](https://github.com/jsilva/coriolis/releases)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Rust](https://img.shields.io/badge/rust-1.70%2B-orange.svg)](https://www.rust-lang.org/)
+[![CI](https://github.com/jsilva/coriolis/workflows/CI/badge.svg)](https://github.com/jsilva/coriolis/actions)
+
 A fast, terminal-based NetCDF data explorer and viewer with vim-style navigation.
 
 *Named after the Coriolis effect — fundamental in understanding Earth's atmospheric and oceanic circulation.*
-
-![Coriolis Demo](https://via.placeholder.com/800x400?text=Coriolis+TUI+Screenshot)
 
 ## Features
 
@@ -18,11 +21,57 @@ A fast, terminal-based NetCDF data explorer and viewer with vim-style navigation
 - **Low memory footprint** — efficient handling of large datasets
 - **Clipboard support** — copy data and tree structures
 
+## Screenshots
+
+*Screenshots coming soon! Once you upload screenshots to your repository, add them here:*
+
+```markdown
+![Tree Browser](docs/screenshots/browser.png)
+![Data Viewer - Heatmap](docs/screenshots/heatmap.png)
+![Data Viewer - Plot](docs/screenshots/plot.png)
+```
+
 ## Quick Start
 
 ### Installation
 
-#### From Source (Recommended)
+#### Download Pre-built Binary (Recommended)
+
+Download the latest release for your platform:
+
+**Linux (static binary, no dependencies required):**
+```bash
+# Download and extract
+curl -L https://github.com/jsilva/coriolis/releases/latest/download/coriolis-linux-x86_64-musl.tar.gz | tar xz
+
+# Make executable and move to PATH
+chmod +x coriolis
+sudo mv coriolis /usr/local/bin/
+```
+
+**macOS (Intel):**
+```bash
+curl -L https://github.com/jsilva/coriolis/releases/latest/download/coriolis-macos-x86_64.tar.gz | tar xz
+chmod +x coriolis
+sudo mv coriolis /usr/local/bin/
+```
+
+**macOS (Apple Silicon):**
+```bash
+curl -L https://github.com/jsilva/coriolis/releases/latest/download/coriolis-macos-aarch64.tar.gz | tar xz
+chmod +x coriolis
+sudo mv coriolis /usr/local/bin/
+```
+
+Or browse all releases: [https://github.com/jsilva/coriolis/releases](https://github.com/jsilva/coriolis/releases)
+
+#### Using Cargo
+
+```bash
+cargo install coriolis
+```
+
+#### From Source
 
 ```bash
 # Clone the repository
@@ -32,12 +81,6 @@ cd coriolis
 # Build and install
 cargo build --release
 sudo cp target/release/coriolis /usr/local/bin/
-```
-
-#### Using Cargo
-
-```bash
-cargo install coriolis
 ```
 
 ### Usage
@@ -111,7 +154,7 @@ cargo build --release
 
 # Static Linux binary (portable, no dependencies)
 rustup target add x86_64-unknown-linux-musl
-cargo build --release --target x86_64-unknown-linux-musl
+PKG_CONFIG_ALL_STATIC=1 cargo build --release --target x86_64-unknown-linux-musl
 
 # Run tests
 cargo test
@@ -120,17 +163,14 @@ cargo test
 cargo clippy
 ```
 
-### Using the Makefile
+**Or use the Makefile for convenience:**
 
 ```bash
-make build          # Development build
 make release        # Optimized build
-make static         # Static Linux binary
+make static         # Static Linux binary (includes setup)
 make test           # Run tests
-make clippy         # Lint checks
-make fmt            # Format code
-make install        # Install to /usr/local/bin
-make help           # Show all targets
+make install        # Install to /usr/local/bin (requires sudo)
+make help           # Show all available targets
 ```
 
 ## Project Structure
@@ -191,7 +231,12 @@ OPTIONS:
 
 ## Contributing
 
-Contributions are welcome! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
+Contributions are welcome! Feel free to:
+
+- Report bugs or suggest features via [GitHub Issues](https://github.com/jsilva/coriolis/issues)
+- Submit pull requests with improvements
+- Improve documentation
+- Share your use cases
 
 ### Development Setup
 
@@ -221,6 +266,25 @@ This project is licensed under the MIT License — see the [LICENSE](LICENSE) fi
 - Built with [Ratatui](https://github.com/ratatui-org/ratatui) for the terminal UI
 - Uses the [netcdf](https://crates.io/crates/netcdf) crate for data access
 - Color schemes inspired by [Gruvbox](https://github.com/morhetz/gruvbox)
+
+## Releasing (For Maintainers)
+
+To create a new release with pre-built binaries:
+
+1. Update the version in `Cargo.toml`
+2. Commit the changes: `git commit -am "Bump version to vX.Y.Z"`
+3. Create and push a tag: `git tag vX.Y.Z && git push origin vX.Y.Z`
+4. GitHub Actions will automatically:
+   - Build binaries for Linux (static musl), macOS (Intel + ARM)
+   - Create a draft release with all binaries attached
+   - Generate release notes
+5. Edit the draft release on GitHub and publish it
+
+The release workflow builds:
+- `coriolis-linux-x86_64-musl.tar.gz` - Static Linux binary (recommended)
+- `coriolis-linux-x86_64.tar.gz` - Dynamic Linux binary
+- `coriolis-macos-x86_64.tar.gz` - macOS Intel binary
+- `coriolis-macos-aarch64.tar.gz` - macOS Apple Silicon binary
 
 ## Why "Coriolis"?
 

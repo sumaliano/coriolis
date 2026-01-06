@@ -424,7 +424,7 @@ fn run_app<B: ratatui::backend::Backend>(terminal: &mut Terminal<B>, mut app: Ap
                         app.cycle_theme();
                     },
                     (KeyModifiers::SHIFT, KeyCode::Char('?')) => {
-                        app.status = "Help: q=quit, j/k=nav, /=search, t=toggle preview, T=theme, c=copy tree, y=copy node".to_string();
+                        app.status = "Keys: hjkl/arrows=nav | /=search n/N=next/prev | t=details p=plot | c=copy-tree y=copy-node | T=theme | q=quit".to_string();
                     },
 
                     // Clipboard

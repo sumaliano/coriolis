@@ -18,13 +18,13 @@ pub fn draw_keymap(
     colors: &ThemeColors,
 ) {
     let keymap_text = if file_browser_mode {
-        "jk/↑↓:nav | Enter/l:select | h:parent | q:quit"
+        "Navigate: jk/↑↓ | Select: Enter/l | Parent: h | Quit: q"
     } else if data_viewer_visible {
-        "hjkl:pan | Tab:view | +-:slice | []:dim | q/Esc:close"
+        "Pan: hjkl | View: Tab | Slice: +-[] | Dims: xy | Quit: q/Esc"
     } else if search_active {
-        "Enter:search | Esc:cancel | Type to search"
+        "Search: Enter | Cancel: Esc | Type to search..."
     } else {
-        "q:quit | hjkl:nav | /:search | n/N:next/prev | t:preview | p:plot | c/y:copy | T:theme | ?:help"
+        "Nav: hjkl/↑↓ | Search: / n N | Details: t | Plot: p | Theme: T | Help: ? | Quit: q"
     };
 
     let paragraph =
