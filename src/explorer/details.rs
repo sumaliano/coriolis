@@ -38,7 +38,7 @@ fn format_variable_details(node: &DataNode, colors: &ThemeColors) -> Vec<Line<'s
     let mut lines = vec![
         Line::from(Span::styled(
             node.name.clone(),
-            Style::default().fg(colors.green).add_modifier(Modifier::BOLD),
+            Style::default().fg(colors.aqua).add_modifier(Modifier::BOLD),
         )),
         Line::from(Span::styled(
             "─".repeat(50),
@@ -55,7 +55,7 @@ fn format_variable_details(node: &DataNode, colors: &ThemeColors) -> Vec<Line<'s
         Line::from(""),
         Line::from(Span::styled(
             "Array Info:",
-            Style::default().fg(colors.aqua).add_modifier(Modifier::BOLD),
+            Style::default().fg(colors.yellow).add_modifier(Modifier::BOLD),
         )),
     ];
 
@@ -64,7 +64,7 @@ fn format_variable_details(node: &DataNode, colors: &ThemeColors) -> Vec<Line<'s
         let dim_type = get_dimension_type(dim_str, shape);
         lines.push(Line::from(vec![
             Span::styled("  Dimensions: ", Style::default().fg(colors.fg1)),
-            Span::styled(dim_type, Style::default().fg(colors.purple)),
+            Span::styled(dim_type, Style::default().fg(colors.red)),
         ]));
 
         // Shape
@@ -85,7 +85,7 @@ fn format_variable_details(node: &DataNode, colors: &ThemeColors) -> Vec<Line<'s
                 shape_spans.push(Span::styled("=", Style::default().fg(colors.fg1)));
                 shape_spans.push(Span::styled(
                     size.to_string(),
-                    Style::default().fg(colors.purple),
+                    Style::default().fg(colors.red),
                 ));
             }
             lines.push(Line::from(shape_spans));
@@ -118,7 +118,7 @@ fn format_variable_details(node: &DataNode, colors: &ThemeColors) -> Vec<Line<'s
     if !node.attributes.is_empty() {
         lines.push(Line::from(Span::styled(
             "Attributes:",
-            Style::default().fg(colors.red).add_modifier(Modifier::BOLD),
+            Style::default().fg(colors.yellow).add_modifier(Modifier::BOLD),
         )));
 
         for (key, value) in &node.attributes {
@@ -168,7 +168,7 @@ fn format_group_details(node: &DataNode, colors: &ThemeColors) -> Vec<Line<'stat
         )),
         Line::from(vec![
             Span::styled("Type: ", Style::default().fg(colors.fg1)),
-            Span::styled("group", Style::default().fg(colors.aqua)),
+            Span::styled("group", Style::default().fg(colors.blue)),
         ]),
         Line::from(vec![
             Span::styled("Path: ", Style::default().fg(colors.fg1)),
@@ -195,7 +195,7 @@ fn format_group_details(node: &DataNode, colors: &ThemeColors) -> Vec<Line<'stat
             lines.push(Line::from(vec![
                 Span::styled(format!("  {}", dim_name), Style::default().fg(colors.aqua)),
                 Span::styled(" = ", Style::default().fg(colors.fg1)),
-                Span::styled(value.to_string(), Style::default().fg(colors.aqua)),
+                Span::styled(value.to_string(), Style::default().fg(colors.red)),
             ]));
         }
         lines.push(Line::from(""));

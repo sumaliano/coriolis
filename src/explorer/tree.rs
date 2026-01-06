@@ -13,23 +13,6 @@ use ratatui::{
 };
 use std::path::PathBuf;
 
-/// Get color for a data type.
-fn dtype_color(dtype: Option<&String>, colors: &ThemeColors) -> ratatui::style::Color {
-    let Some(dtype) = dtype else {
-        return colors.green;
-    };
-    let dtype_lower = dtype.to_lowercase();
-    if dtype_lower.contains("float") || dtype_lower.contains("double") {
-        colors.aqua
-    } else if dtype_lower.contains("int") || dtype_lower.contains("short") || dtype_lower.contains("byte") {
-        colors.blue
-    } else if dtype_lower.contains("char") || dtype_lower.contains("string") {
-        colors.purple
-    } else {
-        colors.green
-    }
-}
-
 /// Build styled spans for any node type.
 fn build_node_spans(node: &DataNode, colors: &ThemeColors) -> Vec<Span<'static>> {
     let mut spans = Vec::new();
@@ -39,7 +22,7 @@ fn build_node_spans(node: &DataNode, colors: &ThemeColors) -> Vec<Span<'static>>
         spans.push(Span::styled(
             node.name.clone(),
             Style::default()
-                .fg(dtype_color(node.dtype.as_ref(), colors))
+                .fg(colors.aqua)
                 .add_modifier(Modifier::BOLD),
         ));
 
@@ -54,7 +37,7 @@ fn build_node_spans(node: &DataNode, colors: &ThemeColors) -> Vec<Span<'static>>
                     }
                     spans.push(Span::styled(dim_name.to_string(), Style::default().fg(colors.yellow)));
                     spans.push(Span::styled("=", Style::default().fg(colors.fg1)));
-                    spans.push(Span::styled(size.to_string(), Style::default().fg(colors.purple)));
+                    spans.push(Span::styled(size.to_string(), Style::default().fg(colors.red)));
                 }
                 spans.push(Span::styled(")", Style::default().fg(colors.fg1)));
             }
