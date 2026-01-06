@@ -746,11 +746,12 @@ fn draw_heatmap_view(
     let colorbar_height = 1;
     let axis_label_height = 1;
     let left_margin = 8; // For Y-axis labels
+    let right_margin = 8; // Balance the left margin for symmetric centering
 
     let heatmap_area = Rect {
         x: inner.x + left_margin,
         y: inner.y + colorbar_height,
-        width: inner.width.saturating_sub(left_margin),
+        width: inner.width.saturating_sub(left_margin + right_margin),
         height: inner
             .height
             .saturating_sub(colorbar_height + axis_label_height),
@@ -814,74 +815,86 @@ fn draw_heatmap_view(
         }
     }
 
-    // Render dense heatmap with orientation-independent scaling
-    // The scale factor is calculated to work for BOTH orientations (normal and transposed)
-    // so that transposing just swaps the pixel dimensions without changing the scale
-    let max_h = heatmap_area.height as usize;
+    // Render dense heatmap using half-block technique (▀)
+    // Each character shows 2 vertical pixels: foreground=top, background=bottom
+    // With terminal char aspect ~2:1, each half-pixel is roughly square
+
+    // Available space
+    // - Horizontal: heatmap_area.width characters (1 char = 1 data column)
+    // - Vertical: heatmap_area.height * 2 pixels (half-blocks give 2 pixels per char)
     let max_w_chars = heatmap_area.width as usize;
-    let pixel_width = 3;
-    let max_w = max_w_chars / pixel_width;
-    if max_h == 0 || max_w == 0 {
+    let max_h_pixels = heatmap_area.height as usize * 2;
+
+    if max_w_chars == 0 || max_h_pixels == 0 {
         return;
     }
 
-    // Terminal characters have an aspect ratio (typically ~2:1 height:width)
-    // We use pixel_width=2 to make square pixels, accounting for this
-    let char_aspect_ratio = 2.0;
+    // Simple uniform scaling to fit data while preserving aspect ratio
+    let scale = (max_h_pixels as f64 / rows as f64)
+        .min(max_w_chars as f64 / cols as f64);
 
-    // Adjust horizontal scaling to account for terminal character aspect ratio
-    // This makes pixels truly square in visual space
-    let max_w_adjusted = max_w as f64 * (pixel_width as f64 / char_aspect_ratio);
+    // Calculate display dimensions
+    let disp_rows = ((rows as f64 * scale).floor() as usize).max(1); // Vertical pixels
+    let disp_cols = ((cols as f64 * scale).floor() as usize).max(1); // Horizontal chars
 
-    // Calculate scale that works for BOTH orientations (rows×cols and cols×rows)
-    // This ensures transposing just swaps pixels without changing scale
-    let scale_normal = (max_h as f64 / rows as f64).min(max_w_adjusted / cols as f64);
-    let scale_transposed = (max_h as f64 / cols as f64).min(max_w_adjusted / rows as f64);
-    let scale = scale_normal.min(scale_transposed);
+    // Convert vertical pixels to character rows for rendering
+    let char_rows = (disp_rows + 1) / 2; // Round up for odd rows
 
-    // Calculate display dimensions using the orientation-independent scale
-    let disp_rows = ((rows as f64) * scale).floor().max(1.0) as usize;
-    let disp_cols = ((cols as f64) * scale).floor().max(1.0) as usize;
-
-    // Center the heatmap in the available space
-    let offset_x_chars = (((max_w - disp_cols) * pixel_width) / 2) as u16;
-    let offset_y = ((max_h - disp_rows) / 2) as u16;
+    // Center the heatmap in available space (within heatmap_area)
+    let offset_x_chars = ((max_w_chars - disp_cols) / 2) as u16;
+    let offset_y_chars = ((heatmap_area.height as usize - char_rows) / 2) as u16;
 
     // Use uniform step size for consistent sampling
     let row_step = (rows as f64) / (disp_rows as f64);
     let col_step = (cols as f64) / (disp_cols as f64);
 
-    for y in 0..disp_rows {
-        let row_idx = (y as f64 * row_step).floor() as usize;
-        let row_idx = row_idx.min(rows - 1);
+    // Helper function to get color for a data value
+    let get_color = |row_idx: usize, col_idx: usize| -> ratatui::style::Color {
+        let raw_val = data_2d[row_idx][col_idx];
+        if raw_val.is_finite() {
+            state
+                .color_palette
+                .color(((raw_val - min_val) / range).clamp(0.0, 1.0))
+        } else {
+            colors.gray
+        }
+    };
+
+    // Render using half-block characters (▀)
+    // Process rows in pairs: foreground = top pixel, background = bottom pixel
+    for char_y in 0..char_rows {
+        let top_y = char_y * 2;
+        let bottom_y = top_y + 1;
+
         for px in 0..disp_cols {
             let col_idx = (px as f64 * col_step).floor() as usize;
             let col_idx = col_idx.min(cols - 1);
-            let raw_val = data_2d[row_idx][col_idx];
-            // Simplified path: no value transform (e.g., log) — use raw value
-            let val = raw_val;
-            let color = if val.is_finite() {
-                state
-                    .color_palette
-                    .color(((val - min_val) / range).clamp(0.0, 1.0))
+
+            // Get top pixel color
+            let top_row_idx = (top_y as f64 * row_step).floor() as usize;
+            let top_row_idx = top_row_idx.min(rows - 1);
+            let top_color = get_color(top_row_idx, col_idx);
+
+            // Get bottom pixel color (or use background color if no bottom pixel)
+            let bottom_color = if bottom_y < disp_rows {
+                let bottom_row_idx = (bottom_y as f64 * row_step).floor() as usize;
+                let bottom_row_idx = bottom_row_idx.min(rows - 1);
+                get_color(bottom_row_idx, col_idx)
             } else {
-                colors.gray
+                colors.bg0 // Use background color for unpaired bottom pixel
             };
-            for i in 0..pixel_width {
-                let screen_x = heatmap_area.x + offset_x_chars + (px * pixel_width + i) as u16;
-                let screen_y = heatmap_area.y + offset_y + y as u16;
-                if screen_x >= heatmap_area.x + heatmap_area.width {
-                    break;
-                }
-                if screen_y >= heatmap_area.y + heatmap_area.height {
-                    break;
-                }
+
+            // Render one half-block character per pixel (maximum resolution)
+            let screen_x = heatmap_area.x + offset_x_chars + px as u16;
+            let screen_y = heatmap_area.y + offset_y_chars + char_y as u16;
+
+            if screen_x < heatmap_area.x + heatmap_area.width
+                && screen_y < heatmap_area.y + heatmap_area.height
+            {
                 if let Some(cell) = f.buffer_mut().cell_mut((screen_x, screen_y)) {
-                    if val.is_finite() {
-                        cell.set_char('█').set_fg(color);
-                    } else {
-                        cell.set_char('·').set_fg(colors.gray);
-                    }
+                    cell.set_char('▀')
+                        .set_fg(top_color)
+                        .set_bg(bottom_color);
                 }
             }
         }
@@ -889,6 +902,7 @@ fn draw_heatmap_view(
 
     // Draw Y-axis labels (left side), aligned to the actual heatmap start so they stay
     // visually adjacent when the heatmap is horizontally centered.
+    // Note: With half-block rendering, we work with pixel positions but display on char rows
     let y_label_positions = [0, disp_rows / 2, disp_rows.saturating_sub(1)];
     for &y_pos in &y_label_positions {
         if y_pos >= disp_rows {
@@ -900,7 +914,9 @@ fn draw_heatmap_view(
         let label_short: String = label.chars().take(7).collect();
         let label_len = label_short.len() as u16;
 
-        let screen_y = heatmap_area.y + offset_y + y_pos as u16;
+        // Convert pixel row to character row for half-block rendering
+        let char_row = y_pos / 2;
+        let screen_y = heatmap_area.y + offset_y_chars + char_row as u16;
         if screen_y < heatmap_area.y + heatmap_area.height {
             // Right-align label immediately to the left of the heatmap drawing region
             let heatmap_start_x = heatmap_area.x + offset_x_chars;
@@ -914,7 +930,7 @@ fn draw_heatmap_view(
             for (i, ch) in label_short.chars().enumerate() {
                 let x = label_start_x + i as u16;
                 if x < heatmap_start_x {
-                    // ensure we don’t overwrite heatmap
+                    // ensure we don't overwrite heatmap
                     if let Some(cell) = f.buffer_mut().cell_mut((x, screen_y)) {
                         cell.set_char(ch).set_fg(colors.green);
                     }
@@ -924,7 +940,8 @@ fn draw_heatmap_view(
     }
 
     // Draw X-axis labels (bottom) - position immediately after the actual heatmap pixels
-    let x_label_y = heatmap_area.y + offset_y + disp_rows as u16;
+    // With half-block rendering, use char_rows instead of disp_rows
+    let x_label_y = heatmap_area.y + offset_y_chars + char_rows as u16;
     if x_label_y < inner.y + inner.height {
         let x_label_positions = [0, disp_cols / 2, disp_cols.saturating_sub(1)];
         for &x_pos in &x_label_positions {
@@ -936,10 +953,11 @@ fn draw_heatmap_view(
             let label = var.get_coord_label(col_dim, data_col);
             let label_short: String = label.chars().take(8).collect();
 
-            let screen_x = heatmap_area.x + offset_x_chars + (x_pos * pixel_width) as u16;
+            let screen_x = heatmap_area.x + offset_x_chars + x_pos as u16;
             for (i, ch) in label_short.chars().enumerate() {
                 let x = screen_x + i as u16;
-                if x < heatmap_area.x + heatmap_area.width {
+                // Allow labels to extend into full inner width (not just heatmap_area)
+                if x < inner.x + inner.width {
                     if let Some(cell) = f.buffer_mut().cell_mut((x, x_label_y)) {
                         cell.set_char(ch).set_fg(colors.green);
                     }
@@ -955,15 +973,17 @@ fn draw_heatmap_view(
     let cx = ((cursor_col as f64 + 0.5) * (disp_cols as f64) / (cols as f64)).floor() as usize;
     let cy = cy.min(disp_rows.saturating_sub(1));
     let cx = cx.min(disp_cols.saturating_sub(1));
-    let screen_y = heatmap_area.y + offset_y + cy as u16;
-    let screen_x = heatmap_area.x + offset_x_chars + (cx * pixel_width) as u16;
+
+    // Convert pixel row to character row for half-block rendering
+    let cursor_char_row = cy / 2;
+    let screen_y = heatmap_area.y + offset_y_chars + cursor_char_row as u16;
+    let screen_x = heatmap_area.x + offset_x_chars + cx as u16;
     if screen_x < heatmap_area.x + heatmap_area.width
         && screen_y < heatmap_area.y + heatmap_area.height
     {
-        for i in 0..pixel_width {
-            if let Some(cell) = f.buffer_mut().cell_mut((screen_x + i as u16, screen_y)) {
-                cell.set_char('┼').set_fg(colors.yellow);
-            }
+        if let Some(cell) = f.buffer_mut().cell_mut((screen_x, screen_y)) {
+            // Use '┼' for cursor with high-visibility colors
+            cell.set_char('┼').set_fg(colors.yellow).set_bg(colors.bg1);
         }
     }
 }
