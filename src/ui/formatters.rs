@@ -27,6 +27,41 @@ pub fn format_dimensions(dim_str: &str, shape: &[usize]) -> String {
         .join(", ")
 }
 
+/// Determine the dimension type based on dimension names and shape.
+/// Returns "Scalar", "1D", "2D", "Geo2D", "3D", etc.
+pub fn get_dimension_type(dim_str: &str, shape: &[usize]) -> String {
+    let ndims = shape.len();
+
+    if ndims == 0 {
+        return "Scalar".to_string();
+    }
+
+    if ndims == 1 {
+        return "1D".to_string();
+    }
+
+    if ndims == 2 {
+        // Check if it's a geographic 2D array
+        let dims: Vec<&str> = dim_str.split(", ").collect();
+        if dims.len() == 2 {
+            let dim0 = dims[0].to_lowercase();
+            let dim1 = dims[1].to_lowercase();
+
+            let is_geo = (dim0.contains("lat") || dim0.contains("y"))
+                      && (dim1.contains("lon") || dim1.contains("x"))
+                      || (dim1.contains("lat") || dim1.contains("y"))
+                      && (dim0.contains("lon") || dim0.contains("x"));
+
+            if is_geo {
+                return "Geo2D".to_string();
+            }
+        }
+        return "2D".to_string();
+    }
+
+    format!("{}D", ndims)
+}
+
 /// Format a number with thousand separators.
 pub fn format_number(n: usize) -> String {
     let s = n.to_string();

@@ -101,7 +101,7 @@ fn draw_details(f: &mut Frame<'_>, app: &App, area: Rect, colors: &ThemeColors) 
                 .style(Style::default().bg(colors.bg0)),
         )
         .style(Style::default().fg(colors.fg0))
-        .wrap(Wrap { trim: true })
+        .wrap(Wrap { trim: false })
         .scroll((app.explorer.preview_scroll, 0));
 
     f.render_widget(paragraph, area);

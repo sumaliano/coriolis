@@ -2,7 +2,7 @@
 
 use super::ExplorerState;
 use crate::data::{DataNode, DatasetInfo};
-use crate::ui::formatters::{clean_dtype, parse_dimensions};
+use crate::ui::formatters::{clean_dtype, get_dimension_type, parse_dimensions};
 use crate::ui::ThemeColors;
 use ratatui::{
     layout::Rect,
@@ -59,10 +59,9 @@ fn build_node_spans(node: &DataNode, colors: &ThemeColors) -> Vec<Span<'static>>
                 spans.push(Span::styled(")", Style::default().fg(colors.fg1)));
             }
 
-            // Dimensionality: [ND]
-            if !shape.is_empty() {
-                spans.push(Span::styled(format!(" [{}D]", shape.len()), Style::default().fg(colors.orange)));
-            }
+            // Dimensionality: [Scalar|1D|2D|Geo2D|etc]
+            let dim_type = get_dimension_type(dim_str, shape);
+            spans.push(Span::styled(format!(" [{}]", dim_type), Style::default().fg(colors.orange)));
         }
 
         // Data type

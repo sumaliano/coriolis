@@ -1,7 +1,7 @@
 //! Details pane formatting for tree nodes.
 
 use crate::data::DataNode;
-use crate::ui::formatters::{clean_dtype, format_number, parse_dimensions};
+use crate::ui::formatters::{clean_dtype, format_number, get_dimension_type, parse_dimensions};
 use crate::ui::ThemeColors;
 use ratatui::{
     style::{Modifier, Style},
@@ -26,7 +26,6 @@ pub fn format_node_details(node: &DataNode, colors: &ThemeColors) -> Vec<Line<'s
                 .fg(colors.aqua)
                 .add_modifier(Modifier::BOLD),
         )),
-        Line::from(""),
         Line::from(vec![
             Span::styled("Path: ", Style::default().fg(colors.fg1)),
             Span::styled(node.path.clone(), Style::default().fg(colors.fg0)),
@@ -39,15 +38,12 @@ fn format_variable_details(node: &DataNode, colors: &ThemeColors) -> Vec<Line<'s
     let mut lines = vec![
         Line::from(Span::styled(
             node.name.clone(),
-            Style::default()
-                .fg(colors.aqua)
-                .add_modifier(Modifier::BOLD),
+            Style::default().fg(colors.green).add_modifier(Modifier::BOLD),
         )),
         Line::from(Span::styled(
             "─".repeat(50),
             Style::default().fg(colors.bg2),
         )),
-        Line::from(""),
         Line::from(vec![
             Span::styled("Type: ", Style::default().fg(colors.fg1)),
             Span::styled("variable", Style::default().fg(colors.aqua)),
@@ -58,36 +54,41 @@ fn format_variable_details(node: &DataNode, colors: &ThemeColors) -> Vec<Line<'s
         ]),
         Line::from(""),
         Line::from(Span::styled(
-            "Array Info",
-            Style::default()
-                .fg(colors.aqua)
-                .add_modifier(Modifier::BOLD),
+            "Array Info:",
+            Style::default().fg(colors.aqua).add_modifier(Modifier::BOLD),
         )),
     ];
 
-    // Dimensions
+    // Dimensions type
     if let (Some(dim_str), Some(shape)) = (node.metadata.get("dims"), &node.shape) {
+        let dim_type = get_dimension_type(dim_str, shape);
+        lines.push(Line::from(vec![
+            Span::styled("  Dimensions: ", Style::default().fg(colors.fg1)),
+            Span::styled(dim_type, Style::default().fg(colors.purple)),
+        ]));
+
+        // Shape
         let dims = parse_dimensions(dim_str, shape);
         if !dims.is_empty() {
-            let mut dim_spans = vec![Span::styled(
-                "  Dimensions: ",
+            let mut shape_spans = vec![Span::styled(
+                "  Shape: ",
                 Style::default().fg(colors.fg1),
             )];
             for (i, (dim_name, size)) in dims.iter().enumerate() {
                 if i > 0 {
-                    dim_spans.push(Span::styled(" x ", Style::default().fg(colors.fg1)));
+                    shape_spans.push(Span::styled(" x ", Style::default().fg(colors.fg1)));
                 }
-                dim_spans.push(Span::styled(
+                shape_spans.push(Span::styled(
                     dim_name.to_string(),
                     Style::default().fg(colors.yellow),
                 ));
-                dim_spans.push(Span::styled("=", Style::default().fg(colors.fg1)));
-                dim_spans.push(Span::styled(
+                shape_spans.push(Span::styled("=", Style::default().fg(colors.fg1)));
+                shape_spans.push(Span::styled(
                     size.to_string(),
                     Style::default().fg(colors.purple),
                 ));
             }
-            lines.push(Line::from(dim_spans));
+            lines.push(Line::from(shape_spans));
         }
     }
 
@@ -116,17 +117,15 @@ fn format_variable_details(node: &DataNode, colors: &ThemeColors) -> Vec<Line<'s
     // Attributes
     if !node.attributes.is_empty() {
         lines.push(Line::from(Span::styled(
-            "Attributes",
-            Style::default()
-                .fg(colors.orange)
-                .add_modifier(Modifier::BOLD),
+            "Attributes:",
+            Style::default().fg(colors.red).add_modifier(Modifier::BOLD),
         )));
 
         for (key, value) in &node.attributes {
             lines.push(Line::from(vec![
                 Span::styled(format!("  :{}", key), Style::default().fg(colors.orange)),
                 Span::styled(" = ", Style::default().fg(colors.fg1)),
-                Span::styled(format!("{}", value), Style::default().fg(colors.fg0)),
+                Span::styled(value.to_string(), Style::default().fg(colors.fg0)),
             ]));
         }
 
@@ -135,23 +134,21 @@ fn format_variable_details(node: &DataNode, colors: &ThemeColors) -> Vec<Line<'s
 
     // Actions
     lines.push(Line::from(Span::styled(
-        "Actions",
+        "Actions:",
         Style::default()
             .fg(colors.yellow)
             .add_modifier(Modifier::BOLD),
     )));
     lines.push(Line::from(vec![
-        Span::styled("  Press ", Style::default().fg(colors.fg1)),
+        Span::styled("Press ", Style::default().fg(colors.fg1)),
         Span::styled(
             "p",
-            Style::default()
-                .fg(colors.yellow)
-                .add_modifier(Modifier::BOLD),
+            Style::default().fg(colors.yellow).add_modifier(Modifier::BOLD),
         ),
         Span::styled(" to open data viewer", Style::default().fg(colors.fg1)),
     ]));
     lines.push(Line::from(Span::styled(
-        "  Statistics and visualizations available",
+        "Statistics and visualizations available",
         Style::default().fg(colors.fg1),
     )));
 
@@ -163,15 +160,12 @@ fn format_group_details(node: &DataNode, colors: &ThemeColors) -> Vec<Line<'stat
     let mut lines = vec![
         Line::from(Span::styled(
             node.name.clone(),
-            Style::default()
-                .fg(colors.aqua)
-                .add_modifier(Modifier::BOLD),
+            Style::default().fg(colors.blue).add_modifier(Modifier::BOLD),
         )),
         Line::from(Span::styled(
             "─".repeat(50),
             Style::default().fg(colors.bg2),
         )),
-        Line::from(""),
         Line::from(vec![
             Span::styled("Type: ", Style::default().fg(colors.fg1)),
             Span::styled("group", Style::default().fg(colors.aqua)),
@@ -192,10 +186,8 @@ fn format_group_details(node: &DataNode, colors: &ThemeColors) -> Vec<Line<'stat
 
     if !dims.is_empty() {
         lines.push(Line::from(Span::styled(
-            "Dimensions",
-            Style::default()
-                .fg(colors.aqua)
-                .add_modifier(Modifier::BOLD),
+            "Dimensions:",
+            Style::default().fg(colors.yellow).add_modifier(Modifier::BOLD),
         )));
 
         for (key, value) in dims {
@@ -203,7 +195,7 @@ fn format_group_details(node: &DataNode, colors: &ThemeColors) -> Vec<Line<'stat
             lines.push(Line::from(vec![
                 Span::styled(format!("  {}", dim_name), Style::default().fg(colors.aqua)),
                 Span::styled(" = ", Style::default().fg(colors.fg1)),
-                Span::styled(format!("{}", value), Style::default().fg(colors.aqua)),
+                Span::styled(value.to_string(), Style::default().fg(colors.aqua)),
             ]));
         }
         lines.push(Line::from(""));
@@ -218,10 +210,8 @@ fn format_group_details(node: &DataNode, colors: &ThemeColors) -> Vec<Line<'stat
 
     if !variables.is_empty() {
         lines.push(Line::from(Span::styled(
-            format!("Variables ({})", variables.len()),
-            Style::default()
-                .fg(colors.aqua)
-                .add_modifier(Modifier::BOLD),
+            format!("Variables ({}):", variables.len()),
+            Style::default().fg(colors.yellow).add_modifier(Modifier::BOLD),
         )));
 
         for var in variables {
@@ -259,7 +249,7 @@ fn format_group_details(node: &DataNode, colors: &ThemeColors) -> Vec<Line<'stat
                 lines.push(Line::from(vec![
                     Span::styled(format!("    :{}", key), Style::default().fg(colors.orange)),
                     Span::styled(" = ", Style::default().fg(colors.fg1)),
-                    Span::styled(format!("{}", value), Style::default().fg(colors.fg0)),
+                    Span::styled(value.to_string(), Style::default().fg(colors.fg0)),
                 ]));
             }
         }
@@ -275,18 +265,15 @@ fn format_group_details(node: &DataNode, colors: &ThemeColors) -> Vec<Line<'stat
 
     if !groups.is_empty() {
         lines.push(Line::from(Span::styled(
-            format!("Subgroups ({})", groups.len()),
-            Style::default()
-                .fg(colors.aqua)
-                .add_modifier(Modifier::BOLD),
+            format!("Subgroups ({}):", groups.len()),
+            Style::default().fg(colors.yellow).add_modifier(Modifier::BOLD),
         )));
 
         for group in groups {
             lines.push(Line::from(vec![
                 Span::styled("  ", Style::default()),
-                Span::styled(group.name.clone(), Style::default().fg(colors.aqua)),
-                Span::styled(
-                    format!(" ({} items)", group.children.len()),
+                Span::styled(group.name.clone(), Style::default().fg(colors.blue)),
+                Span::styled(format!(" ({} items)", group.children.len()),
                     Style::default().fg(colors.fg1),
                 ),
             ]));
@@ -297,17 +284,15 @@ fn format_group_details(node: &DataNode, colors: &ThemeColors) -> Vec<Line<'stat
     // Global attributes section
     if !node.attributes.is_empty() {
         lines.push(Line::from(Span::styled(
-            format!("Attributes ({})", node.attributes.len()),
-            Style::default()
-                .fg(colors.orange)
-                .add_modifier(Modifier::BOLD),
+            format!("Attributes ({}):", node.attributes.len()),
+            Style::default().fg(colors.yellow).add_modifier(Modifier::BOLD),
         )));
 
         for (key, value) in &node.attributes {
             lines.push(Line::from(vec![
                 Span::styled(format!("  :{}", key), Style::default().fg(colors.orange)),
                 Span::styled(" = ", Style::default().fg(colors.fg1)),
-                Span::styled(format!("{}", value), Style::default().fg(colors.fg0)),
+                Span::styled(value.to_string(), Style::default().fg(colors.fg0)),
             ]));
         }
     }
