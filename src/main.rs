@@ -202,12 +202,14 @@ fn run_app<B: ratatui::backend::Backend>(terminal: &mut Terminal<B>, mut app: Ap
                         | (KeyModifiers::NONE, KeyCode::Char('_')) => {
                             app.data_viewer.decrement_active_slice();
                         },
-                        // Change which dimensions are displayed
+                        // Change which dimensions are displayed (Table and Heatmap only)
                         (KeyModifiers::NONE, KeyCode::Char('r'))
                         | (KeyModifiers::NONE, KeyCode::Char('R')) => {
-                            app.data_viewer.rotate_display_dims();
-                            app.data_viewer
-                                .set_status("Rotated Y ↔ X dimensions".to_string());
+                            if !matches!(app.data_viewer.view_mode, ViewMode::Plot1D) {
+                                app.data_viewer.rotate_display_dims();
+                                app.data_viewer
+                                    .set_status("Rotated Y ↔ X dimensions".to_string());
+                            }
                         },
                         // Clipboard export remains below
                         (KeyModifiers::CONTROL, KeyCode::Char('c')) => {
@@ -234,20 +236,23 @@ fn run_app<B: ratatui::backend::Backend>(terminal: &mut Terminal<B>, mut app: Ap
                         },
                         (KeyModifiers::NONE, KeyCode::Char('x'))
                         | (KeyModifiers::NONE, KeyCode::Char('X')) => {
-                            app.data_viewer.cycle_display_dim(1);
-                            // Show which dimension was selected
-                            let status_msg = if let Some(ref var) = app.data_viewer.variable {
-                                let dim_idx = app.data_viewer.slicing.display_dims.1;
-                                let dim_name = var
-                                    .dim_names
-                                    .get(dim_idx)
-                                    .map(|s| s.as_str())
-                                    .unwrap_or("?");
-                                format!("X dimension: {}", dim_name)
-                            } else {
-                                "Cycled X dimension".to_string()
-                            };
-                            app.data_viewer.set_status(status_msg);
+                            // X dimension cycling only makes sense in Table and Heatmap modes
+                            if !matches!(app.data_viewer.view_mode, ViewMode::Plot1D) {
+                                app.data_viewer.cycle_display_dim(1);
+                                // Show which dimension was selected
+                                let status_msg = if let Some(ref var) = app.data_viewer.variable {
+                                    let dim_idx = app.data_viewer.slicing.display_dims.1;
+                                    let dim_name = var
+                                        .dim_names
+                                        .get(dim_idx)
+                                        .map(|s| s.as_str())
+                                        .unwrap_or("?");
+                                    format!("X dimension: {}", dim_name)
+                                } else {
+                                    "Cycled X dimension".to_string()
+                                };
+                                app.data_viewer.set_status(status_msg);
+                            }
                         },
                         // Toggle scale/offset
                         (KeyModifiers::NONE, KeyCode::Char('o'))

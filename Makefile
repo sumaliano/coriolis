@@ -19,7 +19,6 @@ static:
 	@echo "Building static binary with musl..."
 	@if ! command -v musl-gcc >/dev/null 2>&1; then \
 		echo "Error: musl-tools not installed"; \
-		echo "Install with: sudo apt-get install musl-tools"; \
 		exit 1; \
 	fi
 	@if ! rustup target list | grep -q "x86_64-unknown-linux-musl (installed)"; then \

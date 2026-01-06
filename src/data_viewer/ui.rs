@@ -20,7 +20,7 @@ pub fn draw_data_viewer(f: &mut Frame<'_>, state: &DataViewerState, colors: &The
         return;
     }
 
-    let area = centered_rect(90, 90, f.area());
+    let area = centered_rect(98, 98, f.area());
 
     // Clear the background
     f.render_widget(Clear, area);
@@ -50,11 +50,11 @@ pub fn draw_data_viewer(f: &mut Frame<'_>, state: &DataViewerState, colors: &The
         let mut constraints = vec![
             Constraint::Length(3), // Header (name, shape)
         ];
+        constraints.push(Constraint::Min(5)); // Content area (left sidebar + main view)
         if has_status {
             constraints.push(Constraint::Length(1)); // Status
         }
-        constraints.push(Constraint::Min(5)); // Content area (left sidebar + main view)
-        constraints.push(Constraint::Length(2)); // Footer
+        constraints.push(Constraint::Length(1)); // Footer
 
         let chunks = Layout::default()
             .direction(Direction::Vertical)
@@ -67,17 +67,11 @@ pub fn draw_data_viewer(f: &mut Frame<'_>, state: &DataViewerState, colors: &The
         draw_header(f, chunks[chunk_idx], var, state, colors);
         chunk_idx += 1;
 
-        // Draw status if present
-        if has_status {
-            draw_status(f, chunks[chunk_idx], state, colors);
-            chunk_idx += 1;
-        }
-
         // Split content area: left sidebar on left, main view on right
         let content_area = chunks[chunk_idx];
         let content_split = Layout::default()
             .direction(Direction::Horizontal)
-            .constraints([Constraint::Length(20), Constraint::Min(20)])
+            .constraints([Constraint::Length(25), Constraint::Min(30)])
             .split(content_area);
 
         // Left sidebar: statistics on top, dimension selectors below (if needed)
@@ -85,7 +79,7 @@ pub fn draw_data_viewer(f: &mut Frame<'_>, state: &DataViewerState, colors: &The
         if has_selectors {
             let sidebar_split = Layout::default()
                 .direction(Direction::Vertical)
-                .constraints([Constraint::Min(8), Constraint::Min(6)])
+                .constraints([Constraint::Min(6), Constraint::Min(6)])
                 .split(sidebar_area);
 
             draw_stats_sidebar(f, sidebar_split[0], var, colors);
@@ -101,6 +95,12 @@ pub fn draw_data_viewer(f: &mut Frame<'_>, state: &DataViewerState, colors: &The
             ViewMode::Heatmap => draw_heatmap_view(f, content_split[1], state, var, colors),
         }
         chunk_idx += 1;
+
+        // Draw status if present
+        if has_status {
+            draw_status(f, chunks[chunk_idx], state, colors);
+            chunk_idx += 1;
+        }
 
         draw_footer(f, chunks[chunk_idx], state, colors);
     }
