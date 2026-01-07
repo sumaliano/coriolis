@@ -21,13 +21,11 @@ A fast, terminal-based NetCDF data explorer and viewer with vim-style navigation
 
 ## Screenshots
 
-*Screenshots coming soon! Once you upload screenshots to your repository, add them here:*
-
-```markdown
 ![Tree Browser](docs/screenshots/browser.png)
+
 ![Data Viewer - Heatmap](docs/screenshots/heatmap.png)
+
 ![Data Viewer - Plot](docs/screenshots/plot.png)
-```
 
 ## Quick Start
 
