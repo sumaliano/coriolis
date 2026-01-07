@@ -1,8 +1,8 @@
 //! Details pane formatting for tree nodes.
 
 use crate::data::DataNode;
-use crate::util::formatters::{clean_dtype, format_number, get_dimension_type, parse_dimensions};
 use crate::shared::ThemeColors;
+use crate::util::formatters::{clean_dtype, format_number, get_dimension_type, parse_dimensions};
 use ratatui::{
     style::{Modifier, Style},
     text::{Line, Span},
