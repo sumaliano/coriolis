@@ -2,8 +2,8 @@
 
 use super::ExplorerState;
 use crate::data::{DataNode, DatasetInfo};
-use crate::ui::formatters::{clean_dtype, get_dimension_type, parse_dimensions};
-use crate::ui::ThemeColors;
+use crate::util::formatters::{clean_dtype, get_dimension_type, parse_dimensions};
+use crate::shared::ThemeColors;
 use ratatui::{
     layout::Rect,
     style::{Modifier, Style},

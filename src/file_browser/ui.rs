@@ -1,7 +1,7 @@
 //! File browser UI rendering.
 
 use super::FileBrowserState;
-use crate::ui::ThemeColors;
+use crate::shared::ThemeColors;
 use ratatui::{
     layout::Rect,
     style::{Modifier, Style},

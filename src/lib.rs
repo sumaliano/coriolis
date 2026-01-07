@@ -65,8 +65,8 @@ pub mod explorer;
 pub mod file_browser;
 /// Search functionality.
 pub mod search;
-/// User interface - shared components.
-pub mod ui;
+/// Shared UI components (themes, formatters, widgets).
+pub mod shared;
 /// Utility functions.
 pub mod util;
 

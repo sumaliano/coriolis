@@ -1,17 +1,10 @@
-//! User interface - shared UI components.
-//!
-//! This module contains shared UI components like themes, formatters, and common widgets.
-//! Feature-specific UI (like data_viewer, explorer) lives in their respective feature modules.
+//! Explorer UI - main application view rendering.
 
-pub mod formatters;
-mod keymap_bar;
-mod status_bar;
-mod theme;
-
+use super::{details, tree};
 use crate::app::App;
 use crate::data_viewer::ui::draw_data_viewer;
-use crate::explorer::{details, tree};
 use crate::file_browser::ui::draw_file_browser;
+use crate::shared::{draw_keymap, draw_status, ThemeColors};
 use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
     style::Style,
@@ -19,10 +12,6 @@ use ratatui::{
     widgets::{Block, Borders, Paragraph, Wrap},
     Frame,
 };
-
-pub use keymap_bar::draw_keymap;
-pub use status_bar::draw_status;
-pub use theme::ThemeColors;
 
 /// Draw the main UI.
 pub fn draw(f: &mut Frame<'_>, app: &mut App) {

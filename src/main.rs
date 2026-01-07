@@ -4,7 +4,7 @@ use anyhow::Result;
 use clap::Parser;
 use coriolis::app::App;
 use coriolis::data_viewer::ViewMode;
-use coriolis::ui;
+use coriolis::explorer::ui;
 use coriolis::util;
 use crossterm::{
     event::{self, Event, KeyCode, KeyModifiers},

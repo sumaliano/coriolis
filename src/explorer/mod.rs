@@ -5,6 +5,7 @@
 
 pub mod details;
 pub mod tree;
+pub mod ui;
 
 use crate::data::DataNode;
 use std::collections::HashSet;

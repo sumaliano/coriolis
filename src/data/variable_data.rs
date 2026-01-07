@@ -1,7 +1,7 @@
 //! Variable data reading and manipulation.
 
 use crate::error::{CoriolisError, Result};
-use crate::ui::formatters::clean_dtype;
+use crate::util::formatters::clean_dtype;
 use ndarray::{ArrayD, IxDyn};
 use netcdf::types::{FloatType, IntType, NcVariableType};
 use std::path::Path;
