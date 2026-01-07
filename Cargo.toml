@@ -1,8 +1,8 @@
 [package]
 name = "coriolis"
-version = "1.1.1"
+version = "1.1.2"
 edition = "2021"
-rust-version = "1.70"
+rust-version = "1.75"
 authors = ["Coriolis Contributors"]
 description = "A fast, terminal-based netCDF data viewer with vim-style navigation"
 readme = "README.md"

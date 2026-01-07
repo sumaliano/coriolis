@@ -2,7 +2,7 @@
 
 [![Release](https://img.shields.io/github/v/release/jsilva/coriolis)](https://github.com/jsilva/coriolis/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Rust](https://img.shields.io/badge/rust-1.70%2B-orange.svg)](https://www.rust-lang.org/)
+[![Rust](https://img.shields.io/badge/rust-1.75%2B-orange.svg)](https://www.rust-lang.org/)
 [![CI](https://github.com/jsilva/coriolis/workflows/CI/badge.svg)](https://github.com/jsilva/coriolis/actions)
 
 A fast, terminal-based NetCDF data explorer and viewer with vim-style navigation.
@@ -132,7 +132,7 @@ coriolis data.nc --log debug.log
 
 ### Requirements
 
-- Rust 1.70 or newer
+- Rust 1.75 or newer
 - For static Linux builds: `musl-tools` package
 
 ### Build Commands
