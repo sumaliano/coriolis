@@ -16,7 +16,7 @@ A fast, terminal-based NetCDF data explorer and viewer with vim-style navigation
 - **Interactive data viewer** — table view, 1D plots, and heatmap visualizations
 - **Multi-dimensional slicing** — navigate through 3D+ arrays with intuitive controls
 - **Vim-style shortcuts** — feel at home with familiar keybindings
-- **Dual themes** — Gruvbox light and dark themes
+- **Dual themes** — light and dark themes
 - **Portable binary** — single static binary on Linux (no runtime dependencies)
 - **Low memory footprint** — efficient handling of large datasets
 - **Clipboard support** — copy data and tree structures
@@ -173,35 +173,6 @@ make install        # Install to /usr/local/bin (requires sudo)
 make help           # Show all available targets
 ```
 
-## Project Structure
-
-```
-src/
-├── main.rs              # Entry point and event loop
-├── lib.rs               # Library exports
-├── app.rs               # Application state
-├── error.rs             # Error types
-├── data/                # NetCDF data handling
-│   ├── dataset.rs       # Dataset wrapper
-│   ├── node.rs          # Tree node types
-│   ├── reader.rs        # File reading
-│   └── variable_data.rs # Variable loading and slicing
-├── navigation/          # Navigation logic
-│   ├── tree.rs          # Tree cursor and state
-│   └── search.rs        # Search functionality
-├── overlay/             # Data viewer overlay
-│   ├── mod.rs           # Overlay state
-│   └── ui.rs            # Overlay rendering
-├── ui/                  # UI components
-│   ├── mod.rs           # UI entry point
-│   ├── browser.rs       # Main browser view
-│   └── theme.rs         # Color themes
-└── util/                # Utilities
-    ├── clipboard.rs     # Clipboard support
-    ├── colormaps.rs     # Heatmap color palettes
-    └── ...
-```
-
 ## Supported Platforms
 
 | Platform | Status | Notes |
@@ -234,8 +205,6 @@ OPTIONS:
 Contributions are welcome! Feel free to:
 
 - Report bugs or suggest features via [GitHub Issues](https://github.com/jsilva/coriolis/issues)
-- Submit pull requests with improvements
-- Improve documentation
 - Share your use cases
 
 ### Development Setup
