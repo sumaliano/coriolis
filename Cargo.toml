@@ -1,6 +1,6 @@
 [package]
 name = "coriolis"
-version = "1.1.2"
+version = "1.1.4"
 edition = "2021"
 rust-version = "1.75"
 authors = ["Coriolis Contributors"]
