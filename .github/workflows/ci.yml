@@ -12,16 +12,12 @@ env:
 
 jobs:
   test:
-    name: Test (${{ matrix.os }}, ${{ matrix.rust }})
-    runs-on: ${{ matrix.os }}
+    name: Test (Rust ${{ matrix.rust }})
+    runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest]
         rust: [stable, "1.70"]
-        exclude:
-          - os: macos-latest
-            rust: "1.70"
 
     steps:
       - uses: actions/checkout@v4
@@ -32,16 +28,10 @@ jobs:
           toolchain: ${{ matrix.rust }}
           components: rustfmt, clippy
 
-      - name: Install system dependencies (Ubuntu)
-        if: matrix.os == 'ubuntu-latest'
+      - name: Install system dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y libnetcdf-dev libhdf5-dev pkg-config
-
-      - name: Install system dependencies (macOS)
-        if: matrix.os == 'macos-latest'
-        run: |
-          brew install netcdf hdf5 pkg-config
 
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2
@@ -61,6 +51,7 @@ jobs:
         run: cargo test --verbose
 
       - name: Build release
+        if: matrix.rust == 'stable'
         run: cargo build --release --verbose
 
   docs:

@@ -2,12 +2,7 @@
 
 use crate::search::SearchState;
 use crate::ui::ThemeColors;
-use ratatui::{
-    layout::Rect,
-    style::Style,
-    widgets::Paragraph,
-    Frame,
-};
+use ratatui::{layout::Rect, style::Style, widgets::Paragraph, Frame};
 
 /// Draw the status bar.
 pub fn draw_status(

@@ -38,7 +38,9 @@ fn format_variable_details(node: &DataNode, colors: &ThemeColors) -> Vec<Line<'s
     let mut lines = vec![
         Line::from(Span::styled(
             node.name.clone(),
-            Style::default().fg(colors.aqua).add_modifier(Modifier::BOLD),
+            Style::default()
+                .fg(colors.aqua)
+                .add_modifier(Modifier::BOLD),
         )),
         Line::from(Span::styled(
             "─".repeat(50),
@@ -55,7 +57,9 @@ fn format_variable_details(node: &DataNode, colors: &ThemeColors) -> Vec<Line<'s
         Line::from(""),
         Line::from(Span::styled(
             "Array Info:",
-            Style::default().fg(colors.yellow).add_modifier(Modifier::BOLD),
+            Style::default()
+                .fg(colors.yellow)
+                .add_modifier(Modifier::BOLD),
         )),
     ];
 
@@ -70,10 +74,7 @@ fn format_variable_details(node: &DataNode, colors: &ThemeColors) -> Vec<Line<'s
         // Shape
         let dims = parse_dimensions(dim_str, shape);
         if !dims.is_empty() {
-            let mut shape_spans = vec![Span::styled(
-                "  Shape: ",
-                Style::default().fg(colors.fg1),
-            )];
+            let mut shape_spans = vec![Span::styled("  Shape: ", Style::default().fg(colors.fg1))];
             for (i, (dim_name, size)) in dims.iter().enumerate() {
                 if i > 0 {
                     shape_spans.push(Span::styled(" x ", Style::default().fg(colors.fg1)));
@@ -118,7 +119,9 @@ fn format_variable_details(node: &DataNode, colors: &ThemeColors) -> Vec<Line<'s
     if !node.attributes.is_empty() {
         lines.push(Line::from(Span::styled(
             "Attributes:",
-            Style::default().fg(colors.yellow).add_modifier(Modifier::BOLD),
+            Style::default()
+                .fg(colors.yellow)
+                .add_modifier(Modifier::BOLD),
         )));
 
         for (key, value) in &node.attributes {
@@ -143,7 +146,9 @@ fn format_variable_details(node: &DataNode, colors: &ThemeColors) -> Vec<Line<'s
         Span::styled("Press ", Style::default().fg(colors.fg1)),
         Span::styled(
             "p",
-            Style::default().fg(colors.yellow).add_modifier(Modifier::BOLD),
+            Style::default()
+                .fg(colors.yellow)
+                .add_modifier(Modifier::BOLD),
         ),
         Span::styled(" to open data viewer", Style::default().fg(colors.fg1)),
     ]));
@@ -160,7 +165,9 @@ fn format_group_details(node: &DataNode, colors: &ThemeColors) -> Vec<Line<'stat
     let mut lines = vec![
         Line::from(Span::styled(
             node.name.clone(),
-            Style::default().fg(colors.blue).add_modifier(Modifier::BOLD),
+            Style::default()
+                .fg(colors.blue)
+                .add_modifier(Modifier::BOLD),
         )),
         Line::from(Span::styled(
             "─".repeat(50),
@@ -187,7 +194,9 @@ fn format_group_details(node: &DataNode, colors: &ThemeColors) -> Vec<Line<'stat
     if !dims.is_empty() {
         lines.push(Line::from(Span::styled(
             "Dimensions:",
-            Style::default().fg(colors.yellow).add_modifier(Modifier::BOLD),
+            Style::default()
+                .fg(colors.yellow)
+                .add_modifier(Modifier::BOLD),
         )));
 
         for (key, value) in dims {
@@ -211,7 +220,9 @@ fn format_group_details(node: &DataNode, colors: &ThemeColors) -> Vec<Line<'stat
     if !variables.is_empty() {
         lines.push(Line::from(Span::styled(
             format!("Variables ({}):", variables.len()),
-            Style::default().fg(colors.yellow).add_modifier(Modifier::BOLD),
+            Style::default()
+                .fg(colors.yellow)
+                .add_modifier(Modifier::BOLD),
         )));
 
         for var in variables {
@@ -266,14 +277,17 @@ fn format_group_details(node: &DataNode, colors: &ThemeColors) -> Vec<Line<'stat
     if !groups.is_empty() {
         lines.push(Line::from(Span::styled(
             format!("Subgroups ({}):", groups.len()),
-            Style::default().fg(colors.yellow).add_modifier(Modifier::BOLD),
+            Style::default()
+                .fg(colors.yellow)
+                .add_modifier(Modifier::BOLD),
         )));
 
         for group in groups {
             lines.push(Line::from(vec![
                 Span::styled("  ", Style::default()),
                 Span::styled(group.name.clone(), Style::default().fg(colors.blue)),
-                Span::styled(format!(" ({} items)", group.children.len()),
+                Span::styled(
+                    format!(" ({} items)", group.children.len()),
                     Style::default().fg(colors.fg1),
                 ),
             ]));
@@ -285,7 +299,9 @@ fn format_group_details(node: &DataNode, colors: &ThemeColors) -> Vec<Line<'stat
     if !node.attributes.is_empty() {
         lines.push(Line::from(Span::styled(
             format!("Attributes ({}):", node.attributes.len()),
-            Style::default().fg(colors.yellow).add_modifier(Modifier::BOLD),
+            Style::default()
+                .fg(colors.yellow)
+                .add_modifier(Modifier::BOLD),
         )));
 
         for (key, value) in &node.attributes {

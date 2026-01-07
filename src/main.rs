@@ -127,35 +127,42 @@ fn run_app<B: ratatui::backend::Backend>(terminal: &mut Terminal<B>, mut app: Ap
                         | (KeyModifiers::NONE, KeyCode::Char('C')) => {
                             app.data_viewer.cycle_color_palette();
                             let palette_name = app.data_viewer.color_palette.name();
-                            app.data_viewer.set_status(format!("Palette: {}", palette_name));
+                            app.data_viewer
+                                .set_status(format!("Palette: {}", palette_name));
                         },
                         // Contextual arrows/hjkl
                         // Table: pan; Plot1D: move cursor; Heatmap: move crosshair
                         (KeyModifiers::NONE, KeyCode::Up)
-                        | (KeyModifiers::NONE, KeyCode::Char('k')) => { match app.data_viewer.view_mode {
+                        | (KeyModifiers::NONE, KeyCode::Char('k')) => {
+                            match app.data_viewer.view_mode {
                                 ViewMode::Table => app.data_viewer.scroll_up(1),
                                 ViewMode::Heatmap => app.data_viewer.move_heat_cursor(-1, 0),
                                 ViewMode::Plot1D => { /* reserved for future y-zoom */ },
                             }
                         },
                         (KeyModifiers::NONE, KeyCode::Down)
-                        | (KeyModifiers::NONE, KeyCode::Char('j')) => { match app.data_viewer.view_mode {
+                        | (KeyModifiers::NONE, KeyCode::Char('j')) => {
+                            match app.data_viewer.view_mode {
                                 ViewMode::Table => app.data_viewer.scroll_down(1),
                                 ViewMode::Heatmap => app.data_viewer.move_heat_cursor(1, 0),
                                 ViewMode::Plot1D => { /* reserved for future y-zoom */ },
                             }
                         },
                         (KeyModifiers::NONE, KeyCode::Left)
-                        | (KeyModifiers::NONE, KeyCode::Char('h')) => match app.data_viewer.view_mode {
-                            ViewMode::Table => app.data_viewer.scroll_left(1),
-                            ViewMode::Heatmap => app.data_viewer.move_heat_cursor(0, -1),
-                            ViewMode::Plot1D => app.data_viewer.plot_cursor_left(),
+                        | (KeyModifiers::NONE, KeyCode::Char('h')) => {
+                            match app.data_viewer.view_mode {
+                                ViewMode::Table => app.data_viewer.scroll_left(1),
+                                ViewMode::Heatmap => app.data_viewer.move_heat_cursor(0, -1),
+                                ViewMode::Plot1D => app.data_viewer.plot_cursor_left(),
+                            }
                         },
                         (KeyModifiers::NONE, KeyCode::Right)
-                        | (KeyModifiers::NONE, KeyCode::Char('l')) => match app.data_viewer.view_mode {
-                            ViewMode::Table => app.data_viewer.scroll_right(1),
-                            ViewMode::Heatmap => app.data_viewer.move_heat_cursor(0, 1),
-                            ViewMode::Plot1D => app.data_viewer.plot_cursor_right(),
+                        | (KeyModifiers::NONE, KeyCode::Char('l')) => {
+                            match app.data_viewer.view_mode {
+                                ViewMode::Table => app.data_viewer.scroll_right(1),
+                                ViewMode::Heatmap => app.data_viewer.move_heat_cursor(0, 1),
+                                ViewMode::Plot1D => app.data_viewer.plot_cursor_right(),
+                            }
                         },
                         // Page up/down for large scrolling
                         (KeyModifiers::CONTROL, KeyCode::Char('u')) => {

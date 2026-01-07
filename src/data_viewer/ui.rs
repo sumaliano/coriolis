@@ -43,8 +43,8 @@ pub fn draw_data_viewer(f: &mut Frame<'_>, state: &DataViewerState, colors: &The
     if let Some(ref var) = state.variable {
         // Layout: header, status (if any), [left sidebar (stats + selectors) | main content], footer
         // Show selectors for: 3D+ variables, OR 2D variables in 1D plot mode
-        let has_selectors = var.ndim() > 2
-            || (var.ndim() == 2 && matches!(state.view_mode, ViewMode::Plot1D));
+        let has_selectors =
+            var.ndim() > 2 || (var.ndim() == 2 && matches!(state.view_mode, ViewMode::Plot1D));
         let has_status = state.status_message.is_some();
 
         let mut constraints = vec![
@@ -193,12 +193,7 @@ fn draw_status(f: &mut Frame<'_>, area: Rect, state: &DataViewerState, colors: &
     }
 }
 
-fn draw_stats_sidebar(
-    f: &mut Frame<'_>,
-    area: Rect,
-    var: &LoadedVariable,
-    colors: &ThemeColors,
-) {
+fn draw_stats_sidebar(f: &mut Frame<'_>, area: Rect, var: &LoadedVariable, colors: &ThemeColors) {
     let mut lines = vec![];
 
     if let Some((min, max)) = var.min_max() {
@@ -853,8 +848,7 @@ fn draw_heatmap_view(
     }
 
     // Simple uniform scaling to fit data while preserving aspect ratio
-    let scale = (max_h_pixels as f64 / rows as f64)
-        .min(max_w_chars as f64 / cols as f64);
+    let scale = (max_h_pixels as f64 / rows as f64).min(max_w_chars as f64 / cols as f64);
 
     // Calculate display dimensions
     let disp_rows = ((rows as f64 * scale).floor() as usize).max(1); // Vertical pixels
@@ -915,9 +909,7 @@ fn draw_heatmap_view(
                 && screen_y < heatmap_area.y + heatmap_area.height
             {
                 if let Some(cell) = f.buffer_mut().cell_mut((screen_x, screen_y)) {
-                    cell.set_char('▀')
-                        .set_fg(top_color)
-                        .set_bg(bottom_color);
+                    cell.set_char('▀').set_fg(top_color).set_bg(bottom_color);
                 }
             }
         }
@@ -1055,7 +1047,10 @@ fn draw_dimension_selectors(
 
                 lines.push(Line::from(vec![
                     Span::styled(format!(" {}: ", label), Style::default().fg(colors.fg1)),
-                    Span::styled(format!("{}[{}]", dim_name, dim_size), Style::default().fg(colors.aqua)),
+                    Span::styled(
+                        format!("{}[{}]", dim_name, dim_size),
+                        Style::default().fg(colors.aqua),
+                    ),
                 ]));
             }
         },

@@ -12,10 +12,7 @@ pub fn parse_dimensions<'a>(dim_str: &'a str, shape: &[usize]) -> Vec<(&'a str, 
     if dim_str.is_empty() {
         return Vec::new();
     }
-    dim_str
-        .split(", ")
-        .zip(shape.iter().copied())
-        .collect()
+    dim_str.split(", ").zip(shape.iter().copied()).collect()
 }
 
 /// Format dimensions as "dim1=size1, dim2=size2".
@@ -48,9 +45,9 @@ pub fn get_dimension_type(dim_str: &str, shape: &[usize]) -> String {
             let dim1 = dims[1].to_lowercase();
 
             let is_geo = (dim0.contains("lat") || dim0.contains("y"))
-                      && (dim1.contains("lon") || dim1.contains("x"))
-                      || (dim1.contains("lat") || dim1.contains("y"))
-                      && (dim0.contains("lon") || dim0.contains("x"));
+                && (dim1.contains("lon") || dim1.contains("x"))
+                || (dim1.contains("lat") || dim1.contains("y"))
+                    && (dim0.contains("lon") || dim0.contains("x"));
 
             if is_geo {
                 return "Geo2D".to_string();

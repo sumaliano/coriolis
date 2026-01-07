@@ -236,7 +236,11 @@ impl App {
         self.file_browser.toggle_hidden();
         self.status = format!(
             "Show hidden: {}",
-            if self.file_browser.show_hidden { "ON" } else { "OFF" }
+            if self.file_browser.show_hidden {
+                "ON"
+            } else {
+                "OFF"
+            }
         );
     }
 

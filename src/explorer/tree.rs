@@ -35,28 +35,53 @@ fn build_node_spans(node: &DataNode, colors: &ThemeColors) -> Vec<Span<'static>>
                     if i > 0 {
                         spans.push(Span::styled(", ", Style::default().fg(colors.fg1)));
                     }
-                    spans.push(Span::styled(dim_name.to_string(), Style::default().fg(colors.yellow)));
+                    spans.push(Span::styled(
+                        dim_name.to_string(),
+                        Style::default().fg(colors.yellow),
+                    ));
                     spans.push(Span::styled("=", Style::default().fg(colors.fg1)));
-                    spans.push(Span::styled(size.to_string(), Style::default().fg(colors.red)));
+                    spans.push(Span::styled(
+                        size.to_string(),
+                        Style::default().fg(colors.red),
+                    ));
                 }
                 spans.push(Span::styled(")", Style::default().fg(colors.fg1)));
             }
 
             // Dimensionality: [Scalar|1D|2D|Geo2D|etc]
             let dim_type = get_dimension_type(dim_str, shape);
-            spans.push(Span::styled(format!(" [{}]", dim_type), Style::default().fg(colors.orange)));
+            spans.push(Span::styled(
+                format!(" [{}]", dim_type),
+                Style::default().fg(colors.orange),
+            ));
         }
 
         // Data type
         if let Some(dtype) = &node.dtype {
-            spans.push(Span::styled(format!(" {}", clean_dtype(dtype)), Style::default().fg(colors.green)));
+            spans.push(Span::styled(
+                format!(" {}", clean_dtype(dtype)),
+                Style::default().fg(colors.green),
+            ));
         }
     } else {
         // Group/Root: icon name (count)
-        let icon = if node.node_type == crate::data::NodeType::Root { "🏠 " } else { "📂 " };
-        spans.push(Span::styled(icon.to_string(), Style::default().fg(colors.fg0)));
-        spans.push(Span::styled(node.name.clone(), Style::default().fg(colors.fg0)));
-        spans.push(Span::styled(format!(" ({})", node.children.len()), Style::default().fg(colors.fg1)));
+        let icon = if node.node_type == crate::data::NodeType::Root {
+            "🏠 "
+        } else {
+            "📂 "
+        };
+        spans.push(Span::styled(
+            icon.to_string(),
+            Style::default().fg(colors.fg0),
+        ));
+        spans.push(Span::styled(
+            node.name.clone(),
+            Style::default().fg(colors.fg0),
+        ));
+        spans.push(Span::styled(
+            format!(" ({})", node.children.len()),
+            Style::default().fg(colors.fg1),
+        ));
     }
 
     spans
@@ -71,7 +96,7 @@ pub fn draw_tree(
     area: Rect,
     colors: &ThemeColors,
 ) {
-    let Some(ref _dataset) = dataset else {
+    let Some(_dataset) = dataset else {
         draw_welcome(f, area, colors);
         return;
     };

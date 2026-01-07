@@ -100,7 +100,11 @@ impl SlicingState {
     pub fn new(ndim: usize, view_mode: ViewMode) -> Self {
         let mut state = Self {
             slice_indices: vec![0; ndim],
-            display_dims: if ndim >= 2 { (ndim - 2, ndim - 1) } else { (0, 0) },
+            display_dims: if ndim >= 2 {
+                (ndim - 2, ndim - 1)
+            } else {
+                (0, 0)
+            },
             active_dim_selector: None,
         };
         state.update_active_selector(ndim, view_mode);
@@ -233,7 +237,8 @@ impl DataViewerState {
         self.view_mode = self.view_mode.next();
         // Update active selector for the new view mode (preserves slice positions)
         if let Some(ref var) = self.variable {
-            self.slicing.update_active_selector(var.ndim(), self.view_mode);
+            self.slicing
+                .update_active_selector(var.ndim(), self.view_mode);
         }
     }
 

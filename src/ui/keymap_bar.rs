@@ -1,12 +1,7 @@
 //! Keymap help bar UI component.
 
 use crate::ui::ThemeColors;
-use ratatui::{
-    layout::Rect,
-    style::Style,
-    widgets::Paragraph,
-    Frame,
-};
+use ratatui::{layout::Rect, style::Style, widgets::Paragraph, Frame};
 
 /// Draw the keymap help bar.
 pub fn draw_keymap(
