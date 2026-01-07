@@ -2,8 +2,8 @@
 
 use super::{DataViewerState, ViewMode};
 use crate::data::LoadedVariable;
-use crate::util::formatters::format_stat_value;
 use crate::shared::ThemeColors;
+use crate::util::formatters::format_stat_value;
 use ratatui::{
     layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::{Modifier, Style},
