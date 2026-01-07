@@ -50,10 +50,10 @@ pub fn draw_data_viewer(f: &mut Frame<'_>, state: &DataViewerState, colors: &The
         let mut constraints = vec![
             Constraint::Length(3), // Header (name, shape)
         ];
-        constraints.push(Constraint::Min(5)); // Content area (left sidebar + main view)
         if has_status {
             constraints.push(Constraint::Length(1)); // Status
         }
+        constraints.push(Constraint::Min(5)); // Content area (left sidebar + main view)
         constraints.push(Constraint::Length(1)); // Footer
 
         let chunks = Layout::default()
@@ -66,6 +66,12 @@ pub fn draw_data_viewer(f: &mut Frame<'_>, state: &DataViewerState, colors: &The
         // Draw header with variable info
         draw_header(f, chunks[chunk_idx], var, state, colors);
         chunk_idx += 1;
+
+        // Draw status if present
+        if has_status {
+            draw_status(f, chunks[chunk_idx], state, colors);
+            chunk_idx += 1;
+        }
 
         // Split content area: left sidebar on left, main view on right
         let content_area = chunks[chunk_idx];
@@ -95,12 +101,6 @@ pub fn draw_data_viewer(f: &mut Frame<'_>, state: &DataViewerState, colors: &The
             ViewMode::Heatmap => draw_heatmap_view(f, content_split[1], state, var, colors),
         }
         chunk_idx += 1;
-
-        // Draw status if present
-        if has_status {
-            draw_status(f, chunks[chunk_idx], state, colors);
-            chunk_idx += 1;
-        }
 
         draw_footer(f, chunks[chunk_idx], state, colors);
     }
