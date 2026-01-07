@@ -278,7 +278,10 @@ impl DataViewerState {
     /// Move 1D plot cursor left.
     pub fn plot_cursor_left(&mut self) {
         if let Some(ref var) = self.variable {
-            let len = if var.ndim() <= 1 {
+            if var.ndim() == 0 {
+                return; // Scalar - no cursor
+            }
+            let len = if var.ndim() == 1 {
                 var.shape[0]
             } else {
                 var.shape[self.slicing.display_dims.0]
@@ -296,7 +299,10 @@ impl DataViewerState {
     /// Move 1D plot cursor right.
     pub fn plot_cursor_right(&mut self) {
         if let Some(ref var) = self.variable {
-            let len = if var.ndim() <= 1 {
+            if var.ndim() == 0 {
+                return; // Scalar - no cursor
+            }
+            let len = if var.ndim() == 1 {
                 var.shape[0]
             } else {
                 var.shape[self.slicing.display_dims.0]
