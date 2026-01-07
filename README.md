@@ -15,7 +15,7 @@ A fast, terminal-based NetCDF data explorer and viewer with vim-style navigation
 - **Multi-dimensional slicing** — navigate through 3D+ arrays with intuitive controls
 - **Vim-style shortcuts** — feel at home with familiar keybindings
 - **Dual themes** — light and dark themes
-- **Portable binary** — single static binary on Linux (no runtime dependencies)
+- **Portable binary** — single static binary for Linux (no runtime dependencies)
 - **Low memory footprint** — efficient handling of large datasets
 - **Clipboard support** — copy data and tree structures
 
@@ -35,7 +35,7 @@ A fast, terminal-based NetCDF data explorer and viewer with vim-style navigation
 
 #### Download Pre-built Binary (Recommended)
 
-Download the latest release for your platform:
+Download the latest release for Linux:
 
 **Linux (static binary, no dependencies required):**
 ```bash
@@ -47,16 +47,10 @@ chmod +x coriolis
 sudo mv coriolis /usr/local/bin/
 ```
 
-**macOS (Intel):**
+**Linux (dynamic binary):**
 ```bash
-curl -L https://github.com/jsilva/coriolis/releases/latest/download/coriolis-macos-x86_64.tar.gz | tar xz
-chmod +x coriolis
-sudo mv coriolis /usr/local/bin/
-```
-
-**macOS (Apple Silicon):**
-```bash
-curl -L https://github.com/jsilva/coriolis/releases/latest/download/coriolis-macos-aarch64.tar.gz | tar xz
+# Requires libnetcdf and libhdf5 installed on your system
+curl -L https://github.com/jsilva/coriolis/releases/latest/download/coriolis-linux-x86_64.tar.gz | tar xz
 chmod +x coriolis
 sudo mv coriolis /usr/local/bin/
 ```
@@ -175,9 +169,9 @@ make help           # Show all available targets
 
 | Platform | Status | Notes |
 |----------|--------|-------|
-| Linux | Fully supported | Static binary available |
-| macOS | Supported | Standard Cargo build |
-| Windows | Experimental | Requires proper terminal emulator |
+| Linux | ✅ Fully supported | Static binary available |
+| macOS | ⚠️ Build from source | Use `cargo install` or build locally |
+| Windows | ⚠️ Build from source | Requires proper terminal emulator |
 
 ## Configuration
 
@@ -242,16 +236,15 @@ To create a new release with pre-built binaries:
 2. Commit the changes: `git commit -am "Bump version to vX.Y.Z"`
 3. Create and push a tag: `git tag vX.Y.Z && git push origin vX.Y.Z`
 4. GitHub Actions will automatically:
-   - Build binaries for Linux (static musl), macOS (Intel + ARM)
-   - Create a draft release with all binaries attached
-   - Generate release notes
+   - Build Linux binaries (static musl + dynamic gnu)
+   - Create a draft release with binaries and checksums attached
+   - Generate release notes with installation instructions
 5. Edit the draft release on GitHub and publish it
 
 The release workflow builds:
-- `coriolis-linux-x86_64-musl.tar.gz` - Static Linux binary (recommended)
-- `coriolis-linux-x86_64.tar.gz` - Dynamic Linux binary
-- `coriolis-macos-x86_64.tar.gz` - macOS Intel binary
-- `coriolis-macos-aarch64.tar.gz` - macOS Apple Silicon binary
+- `coriolis-linux-x86_64-musl.tar.gz` - Static Linux binary (no dependencies required)
+- `coriolis-linux-x86_64.tar.gz` - Dynamic Linux binary (requires libnetcdf/libhdf5)
+- `*.sha256` - SHA256 checksums for verification
 
 ## Why "Coriolis"?
 
