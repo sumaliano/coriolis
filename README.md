@@ -7,8 +7,6 @@
 
 A fast, terminal-based NetCDF data explorer and viewer with vim-style navigation.
 
-*Named after the Coriolis effect — fundamental in understanding Earth's atmospheric and oceanic circulation.*
-
 ## Features
 
 - **Fast NetCDF reading** — supports both classic and NetCDF-4/HDF5-backed files
