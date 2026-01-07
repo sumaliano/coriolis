@@ -1,6 +1,6 @@
 # Coriolis
 
-[![Release](https://img.shields.io/github/v/release/jsilva/coriolis)](https://github.com/jsilva/coriolis/releases)
+[![Release](https://img.shields.io/github/v/release/sumaliano/coriolis)](https://github.com/sumaliano/coriolis/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Rust](https://img.shields.io/badge/rust-1.75%2B-orange.svg)](https://www.rust-lang.org/)
 [![CI](https://github.com/jsilva/coriolis/workflows/CI/badge.svg)](https://github.com/jsilva/coriolis/actions)
