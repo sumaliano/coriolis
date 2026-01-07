@@ -3,7 +3,7 @@
 [![Release](https://img.shields.io/github/v/release/sumaliano/coriolis)](https://github.com/sumaliano/coriolis/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Rust](https://img.shields.io/badge/rust-1.75%2B-orange.svg)](https://www.rust-lang.org/)
-[![CI](https://github.com/jsilva/coriolis/workflows/CI/badge.svg)](https://github.com/jsilva/coriolis/actions)
+[![CI](https://github.com/sumaliano/coriolis/workflows/CI/badge.svg)](https://github.com/sumaliano/coriolis/actions)
 
 A fast, terminal-based NetCDF data explorer and viewer with vim-style navigation.
 
@@ -40,7 +40,7 @@ Download the latest release for Linux:
 **Linux (static binary, no dependencies required):**
 ```bash
 # Download and extract
-curl -L https://github.com/jsilva/coriolis/releases/latest/download/coriolis-linux-x86_64-musl.tar.gz | tar xz
+curl -L https://github.com/sumaliano/coriolis/releases/latest/download/coriolis-linux-x86_64-musl.tar.gz | tar xz
 
 # Make executable and move to PATH
 chmod +x coriolis
@@ -50,12 +50,12 @@ sudo mv coriolis /usr/local/bin/
 **Linux (dynamic binary):**
 ```bash
 # Requires libnetcdf and libhdf5 installed on your system
-curl -L https://github.com/jsilva/coriolis/releases/latest/download/coriolis-linux-x86_64.tar.gz | tar xz
+curl -L https://github.com/sumaliano/coriolis/releases/latest/download/coriolis-linux-x86_64.tar.gz | tar xz
 chmod +x coriolis
 sudo mv coriolis /usr/local/bin/
 ```
 
-Or browse all releases: [https://github.com/jsilva/coriolis/releases](https://github.com/jsilva/coriolis/releases)
+Or browse all releases: [https://github.com/sumaliano/coriolis/releases](https://github.com/sumaliano/coriolis/releases)
 
 #### Using Cargo
 
@@ -67,7 +67,7 @@ cargo install coriolis
 
 ```bash
 # Clone the repository
-git clone https://github.com/jsilva/coriolis.git
+git clone https://github.com/sumaliano/coriolis.git
 cd coriolis
 
 # Build and install
@@ -196,14 +196,14 @@ OPTIONS:
 
 Contributions are welcome! Feel free to:
 
-- Report bugs or suggest features via [GitHub Issues](https://github.com/jsilva/coriolis/issues)
+- Report bugs or suggest features via [GitHub Issues](https://github.com/sumaliano/coriolis/issues)
 - Share your use cases
 
 ### Development Setup
 
 ```bash
 # Clone and build
-git clone https://github.com/jsilva/coriolis.git
+git clone https://github.com/sumaliano/coriolis.git
 cd coriolis
 cargo build
 
