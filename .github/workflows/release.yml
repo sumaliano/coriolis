@@ -96,12 +96,18 @@ jobs:
       - name: Display structure of downloaded files
         run: ls -R artifacts
 
+      - name: Flatten artifacts
+        run: |
+          mkdir -p release-files
+          find artifacts -type f \( -name "*.tar.gz" -o -name "*.sha256" \) -exec cp {} release-files/ \;
+          ls -lh release-files/
+
       - name: Create release
         uses: softprops/action-gh-release@v2
         with:
           draft: true
           generate_release_notes: true
-          files: artifacts/**/*.tar.gz*
+          files: release-files/*
           fail_on_unmatched_files: true
           body: |
             ## Installation

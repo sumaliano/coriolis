@@ -1,6 +1,6 @@
 [package]
 name = "coriolis"
-version = "1.1.5"
+version = "1.2.0"
 edition = "2021"
 rust-version = "1.75"
 authors = ["Coriolis Contributors"]
@@ -25,14 +25,14 @@ path = "src/main.rs"
 
 [dependencies]
 # TUI framework (pure Rust, no system deps!)
-ratatui = "0.29"
+ratatui = "0.30"
 crossterm = "0.29.0"
 
 # Data reading
 netcdf = { version = "0.11.1", features = ["static"] }
 
 # Multi-dimensional arrays (pure Rust)
-ndarray = "0.16"
+ndarray = "0.17.1"
 
 # Error handling (pure Rust)
 anyhow = "1.0"
@@ -49,7 +49,7 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 # String handling (pure Rust)
-unicode-width = "0.2"
+unicode-width = "0.2.2"
 
 [dev-dependencies]
 assert_cmd = "2.0"
