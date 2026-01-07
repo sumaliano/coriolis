@@ -6,6 +6,7 @@
 
 # Rust backup files
 *.rs.bk
+Cargo.lock
 
 # Test data files (exclude from repo)
 *.nc

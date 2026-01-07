@@ -367,8 +367,9 @@ fn draw_table_view(
         .get(col_dim)
         .map(|s| s.as_str())
         .unwrap_or("col");
+    // Title with dimension info - names stay stable, no cursor info
     let title = format!(
-        " {} | Rows: {} | Cols: {} ",
+        " {} │ Rows: {} │ Cols: {} ",
         var.name, row_dim_name, col_dim_name
     );
 
@@ -602,15 +603,18 @@ fn draw_plot1d_view(
         .bounds([y_min, y_max])
         .labels(y_labels);
 
-    // Build title with cursor readout (data is already scaled/unscaled)
+    // Build title with cursor readout and slice info
+    // Use fixed width for cursor value to prevent shifting
     let cursor_val = data.get(cursor_idx).copied().unwrap_or(f64::NAN);
     let cursor_coord = var.get_coord_label(slice_dim, cursor_idx);
-    let readout = format!(
-        " {} @ {}={}: {} ",
+
+    let title = format!(
+        " {} @ {}={}: {:<12}{} ",
         var.name,
         dim_name,
         cursor_coord,
-        format_stat_value(cursor_val)
+        format_stat_value(cursor_val),
+        slice_info
     );
 
     let chart = Chart::new(datasets)
@@ -618,7 +622,7 @@ fn draw_plot1d_view(
             Block::default()
                 .borders(Borders::ALL)
                 .border_style(Style::default().fg(colors.bg2))
-                .title(format!("{}{}", readout, slice_info))
+                .title(title)
                 .title_style(Style::default().fg(colors.yellow)),
         )
         .x_axis(x_axis)
@@ -718,14 +722,33 @@ fn draw_heatmap_view(
     let row_coord = var.get_coord_label(row_dim, cursor_row);
     let col_coord = var.get_coord_label(col_dim, cursor_col);
 
+    // Build slice info for title (show other sliced dimensions)
+    let mut slice_info = String::new();
+    if var.ndim() > 2 {
+        let slice_parts: Vec<String> = (0..var.ndim())
+            .filter(|&i| i != row_dim && i != col_dim)
+            .map(|i| {
+                let dim_name = var.dim_names.get(i).map(|s| s.as_str()).unwrap_or("?");
+                let idx = state.slicing.slice_indices.get(i).copied().unwrap_or(0);
+                let val_str = var.get_coord_label(i, idx);
+                format!("{}={}", dim_name, val_str)
+            })
+            .collect();
+        if !slice_parts.is_empty() {
+            slice_info = format!(" [{}]", slice_parts.join(", "));
+        }
+    }
+
+    // Build title with cursor readout using fixed width for value to prevent shifting
     let title = format!(
-        " {} @ {}={}, {}={}: {} | Colormap: {} ",
+        " {} @ {}={}, {}={}: {:<12}{} │ Colormap: {} ",
         var.name,
         dim1_name,
         row_coord,
         dim2_name,
         col_coord,
         format_stat_value(cursor_val),
+        slice_info,
         state.color_palette.name()
     );
 
@@ -1111,15 +1134,15 @@ fn draw_footer(f: &mut Frame<'_>, area: Rect, state: &DataViewerState, colors: &
 
     let help = match state.view_mode {
         ViewMode::Plot1D => format!(
-            "{}: Tab | Colors: C | Y-Axis: Y | Slice: S PgUp/Dn | Navigate: ←→{} | Close: Esc",
+            "{}: Tab | Colors: C | Y-Axis: Y | Slice: S +/-[] | Navigate: ←→ | Copy: Ctrl+C{} | Close: q/Esc",
             next_mode, scale_hint
         ),
         ViewMode::Table => format!(
-            "{}: Tab | Colors: C | Rotate: R | Axes: YX | Slice: S | Pan: hjkl/↑↓←→{} | Close: Esc",
+            "{}: Tab | Colors: C | Rotate: R | Axes: YX | Slice: S +/-[] | Pan: hjkl Ctrl+U/D | Copy: Ctrl+C{} | Close: q/Esc",
             next_mode, scale_hint
         ),
         ViewMode::Heatmap => format!(
-            "{}: Tab | Colors: C | Rotate: R | Axes: YX | Slice: S | Move: hjkl/↑↓←→{} | Close: Esc",
+            "{}: Tab | Colors: C | Rotate: R | Axes: YX | Slice: S +/-[] | Move: hjkl | Copy: Ctrl+C{} | Close: q/Esc",
             next_mode, scale_hint
         ),
     };
@@ -1138,7 +1161,7 @@ fn draw_error(f: &mut Frame<'_>, area: Rect, error: &str, colors: &ThemeColors) 
                 .add_modifier(Modifier::BOLD),
         )),
         Line::from(""),
-        Line::from(Span::styled(error, Style::default().fg(colors.fg0))),
+        Line::from(Span::styled(error, Style::default().fg(colors.fg1))),
         Line::from(""),
         Line::from("Press Esc to close"),
     ];
