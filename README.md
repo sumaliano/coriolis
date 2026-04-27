@@ -122,8 +122,8 @@ coriolis data.nc --log debug.log
 | `y/x` | Cycle Y/X display dimension |
 | `r` | Rotate (swap) Y/X dimensions |
 | `o` | Toggle scale/offset (raw vs scaled data) |
-| `c` | Cycle color palette (heatmap) |
-| `Ctrl+c` | Copy visible data to clipboard |
+| `C` | Cycle color palette (shift+c) |
+| `c` | Copy visible data to clipboard |
 | `Esc` / `q` | Close viewer |
 
 ## Building

@@ -344,55 +344,59 @@ impl DataViewerState {
     }
 
     /// Copy visible data to clipboard as TSV depending on current view.
-    pub fn copy_visible_to_clipboard(&self) {
-        if let Some(ref var) = self.variable {
-            let mut cb = match arboard::Clipboard::new() {
-                Ok(c) => c,
-                Err(_) => return,
-            };
-            let apply_scale = self.apply_scale_offset;
-            match self.view_mode {
-                ViewMode::Plot1D => {
-                    let dim = if var.ndim() <= 1 {
-                        0
-                    } else {
-                        self.slicing.display_dims.0
-                    };
-                    let data: Vec<f64> = if var.ndim() <= 1 {
-                        var.data
-                            .iter()
-                            .map(|&v| if apply_scale { var.scale_value(v) } else { v })
-                            .collect()
-                    } else {
-                        var.get_1d_slice(dim, &self.slicing.slice_indices, apply_scale)
-                    };
-                    let mut out = String::with_capacity(data.len() * 12);
-                    for (i, v) in data.iter().enumerate() {
-                        out.push_str(&format!("{}\t{}\n", i, v));
-                    }
-                    let _ = cb.set_text(out);
-                },
-                ViewMode::Heatmap | ViewMode::Table => {
-                    let data = var.get_2d_slice(
-                        self.slicing.display_dims.0,
-                        self.slicing.display_dims.1,
-                        &self.slicing.slice_indices,
-                        apply_scale,
-                    );
-                    let mut out = String::new();
-                    for row in &data {
-                        for (ci, v) in row.iter().enumerate() {
-                            if ci > 0 {
-                                out.push('\t');
-                            }
-                            out.push_str(&format!("{}", v));
+    /// Returns an error string if the clipboard is unavailable or the write fails.
+    pub fn copy_visible_to_clipboard(&self) -> Result<(), String> {
+        let var = match self.variable {
+            Some(ref v) => v,
+            None => return Err("No variable loaded".to_string()),
+        };
+
+        let mut cb = arboard::Clipboard::new().map_err(|e| e.to_string())?;
+        let apply_scale = self.apply_scale_offset;
+
+        let text = match self.view_mode {
+            ViewMode::Plot1D => {
+                let dim = if var.ndim() <= 1 {
+                    0
+                } else {
+                    self.slicing.display_dims.0
+                };
+                let data: Vec<f64> = if var.ndim() <= 1 {
+                    var.data
+                        .iter()
+                        .map(|&v| if apply_scale { var.scale_value(v) } else { v })
+                        .collect()
+                } else {
+                    var.get_1d_slice(dim, &self.slicing.slice_indices, apply_scale)
+                };
+                let mut out = String::with_capacity(data.len() * 12);
+                for (i, v) in data.iter().enumerate() {
+                    out.push_str(&format!("{}\t{}\n", i, v));
+                }
+                out
+            },
+            ViewMode::Heatmap | ViewMode::Table => {
+                let data = var.get_2d_slice(
+                    self.slicing.display_dims.0,
+                    self.slicing.display_dims.1,
+                    &self.slicing.slice_indices,
+                    apply_scale,
+                );
+                let mut out = String::new();
+                for row in &data {
+                    for (ci, v) in row.iter().enumerate() {
+                        if ci > 0 {
+                            out.push('\t');
                         }
-                        out.push('\n');
+                        out.push_str(&format!("{}", v));
                     }
-                    let _ = cb.set_text(out);
-                },
-            }
-        }
+                    out.push('\n');
+                }
+                out
+            },
+        };
+
+        cb.set_text(text).map_err(|e| e.to_string())
     }
 
     /// Scroll up.
@@ -581,8 +585,8 @@ impl DataViewerState {
         self.status_message = None;
     }
 
-    /// Get number of rows for current view (helper).
-    fn get_view_rows(&self, var: &LoadedVariable) -> usize {
+    /// Get number of rows for current view.
+    pub(crate) fn get_view_rows(&self, var: &LoadedVariable) -> usize {
         if var.ndim() == 0 {
             1
         } else if var.ndim() == 1 {
@@ -592,8 +596,8 @@ impl DataViewerState {
         }
     }
 
-    /// Get number of columns for current view (helper).
-    fn get_view_cols(&self, var: &LoadedVariable) -> usize {
+    /// Get number of columns for current view.
+    pub(crate) fn get_view_cols(&self, var: &LoadedVariable) -> usize {
         if var.ndim() <= 1 {
             1
         } else {
@@ -621,5 +625,122 @@ impl DataViewerState {
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::data::LoadedVariable;
+    use ndarray::ArrayD;
+
+    fn make_var(data: Vec<f64>, shape: Vec<usize>, dim_names: Vec<&str>) -> LoadedVariable {
+        let arr = ArrayD::from_shape_vec(ndarray::IxDyn(&shape), data).unwrap();
+        let ndim = shape.len();
+        LoadedVariable {
+            name: "v".to_string(),
+            shape,
+            dim_names: dim_names.into_iter().map(|s| s.to_string()).collect(),
+            attributes: Default::default(),
+            dtype: "float64".to_string(),
+            data: arr,
+            scale_factor: 1.0,
+            add_offset: 0.0,
+            min_max: None,
+            mean: None,
+            std: None,
+            valid_count: 0,
+            coordinates: vec![None; ndim],
+        }
+    }
+
+    #[test]
+    fn load_variable_sets_visible() {
+        let mut state = DataViewerState::new();
+        let var = make_var(vec![1.0, 2.0, 3.0], vec![3], vec!["x"]);
+        state.load_variable(var);
+        assert!(state.visible);
+        assert!(state.variable.is_some());
+    }
+
+    #[test]
+    fn close_clears_variable_and_hides() {
+        let mut state = DataViewerState::new();
+        state.load_variable(make_var(vec![1.0], vec![1], vec!["x"]));
+        state.close();
+        assert!(!state.visible);
+        assert!(state.variable.is_none());
+    }
+
+    #[test]
+    fn cycle_view_mode_wraps_around() {
+        let mut state = DataViewerState::new();
+        state.load_variable(make_var(vec![0.0; 6], vec![2, 3], vec!["y", "x"]));
+        assert_eq!(state.view_mode, ViewMode::Table);
+        state.cycle_view_mode();
+        assert_eq!(state.view_mode, ViewMode::Plot1D);
+        state.cycle_view_mode();
+        assert_eq!(state.view_mode, ViewMode::Heatmap);
+        state.cycle_view_mode();
+        assert_eq!(state.view_mode, ViewMode::Table);
+    }
+
+    #[test]
+    fn rotate_display_dims_swaps_axes() {
+        let mut state = DataViewerState::new();
+        state.load_variable(make_var(vec![0.0; 6], vec![2, 3], vec!["y", "x"]));
+        let before = state.slicing.display_dims;
+        state.rotate_display_dims();
+        let after = state.slicing.display_dims;
+        assert_eq!(before.0, after.1);
+        assert_eq!(before.1, after.0);
+    }
+
+    #[test]
+    fn scroll_down_clamped_to_data_bounds() {
+        let mut state = DataViewerState::new();
+        let var = make_var(vec![0.0; 12], vec![4, 3], vec!["y", "x"]);
+        state.load_variable(var);
+        state.scroll_down(100); // far beyond total rows
+        let max_scroll = state
+            .get_view_rows(state.variable.as_ref().unwrap())
+            .saturating_sub(1);
+        assert_eq!(state.scroll.row, max_scroll);
+    }
+
+    #[test]
+    fn increment_active_slice_advances_index() {
+        let mut state = DataViewerState::new();
+        // 3D var: display dims = (1, 2), slice dim = 0
+        let var = make_var(vec![0.0; 24], vec![2, 3, 4], vec!["t", "y", "x"]);
+        state.load_variable(var);
+        // active_dim_selector should be dim 0 (the only non-display dim)
+        assert_eq!(state.slicing.active_dim_selector, Some(0));
+        let before = state.slicing.slice_indices[0];
+        state.increment_active_slice();
+        assert_eq!(state.slicing.slice_indices[0], before + 1);
+    }
+
+    #[test]
+    fn decrement_active_slice_clamps_at_zero() {
+        let mut state = DataViewerState::new();
+        let var = make_var(vec![0.0; 24], vec![2, 3, 4], vec!["t", "y", "x"]);
+        state.load_variable(var);
+        state.decrement_active_slice();
+        assert_eq!(state.slicing.slice_indices[0], 0);
+    }
+
+    #[test]
+    fn get_view_rows_1d() {
+        let var = make_var(vec![1.0, 2.0, 3.0], vec![3], vec!["x"]);
+        let state = DataViewerState::new();
+        assert_eq!(state.get_view_rows(&var), 3);
+    }
+
+    #[test]
+    fn get_view_cols_1d_is_one() {
+        let var = make_var(vec![1.0, 2.0, 3.0], vec![3], vec!["x"]);
+        let state = DataViewerState::new();
+        assert_eq!(state.get_view_cols(&var), 1);
     }
 }

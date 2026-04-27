@@ -1,12 +1,14 @@
 //! Application state and logic.
 
 use std::path::PathBuf;
+use std::sync::mpsc::{self, Receiver};
+use std::thread;
 
-use crate::data::{read_variable, DataNode, DataReader, DatasetInfo};
+use crate::data::{read_variable, DataNode, DataReader, DatasetInfo, LoadedVariable};
 use crate::data_viewer::DataViewerState;
+use crate::explorer::search::SearchState;
 use crate::explorer::ExplorerState;
 use crate::file_browser::FileBrowserState;
-use crate::search::SearchState;
 
 /// Application theme.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -60,6 +62,14 @@ pub struct App {
     pub error_message: Option<String>,
     /// File browser mode.
     pub file_browser_mode: bool,
+    /// True while waiting for a second 'g' to complete the gg binding.
+    pub pending_g: bool,
+    /// Channel receiver for background file loading.
+    loading_rx: Option<Receiver<Result<DatasetInfo, String>>>,
+    /// Path being loaded in the background.
+    loading_path: Option<PathBuf>,
+    /// Channel receiver for background variable loading.
+    variable_rx: Option<Receiver<Result<LoadedVariable, String>>>,
 }
 
 impl App {
@@ -77,9 +87,12 @@ impl App {
             loading: false,
             error_message: None,
             file_browser_mode: false,
+            pending_g: false,
+            loading_rx: None,
+            loading_path: None,
+            variable_rx: None,
         };
 
-        // Check if we need to show file browser
         match file_path {
             Some(path) if path.is_dir() => {
                 app.file_browser.current_dir = path;
@@ -101,7 +114,7 @@ impl App {
         app
     }
 
-    /// Load a file.
+    /// Begin loading a file in a background thread.
     pub fn load_file(&mut self, path: PathBuf) {
         self.loading = true;
         self.status = format!(
@@ -121,33 +134,100 @@ impl App {
             },
         };
 
-        match DataReader::read_file(&canonical_path) {
-            Ok(dataset) => {
-                self.dataset = Some(dataset.clone());
-                self.explorer.build_from_dataset(&dataset);
-                self.status = format!(
-                    "{} loaded",
-                    canonical_path
-                        .file_name()
-                        .map(|n| n.to_string_lossy().to_string())
-                        .unwrap_or_else(|| "file".to_string())
-                );
-                self.error_message = None;
-                self.file_path = Some(canonical_path.clone());
+        self.loading_path = Some(canonical_path.clone());
 
-                if let Some(parent) = canonical_path.parent() {
-                    self.file_browser.current_dir = parent.to_path_buf();
-                }
+        let (tx, rx) = mpsc::channel();
+        self.loading_rx = Some(rx);
 
-                tracing::info!("File loaded successfully");
+        thread::spawn(move || {
+            let result = DataReader::read_file(&canonical_path).map_err(|e| e.to_string());
+            let _ = tx.send(result);
+        });
+    }
+
+    /// Poll for completed background loads (file and variable). Call once per frame.
+    pub fn poll_loading(&mut self) {
+        // Poll file loading.
+        let file_result = match self.loading_rx.as_ref() {
+            Some(rx) => match rx.try_recv() {
+                Ok(r) => Some(r),
+                Err(mpsc::TryRecvError::Empty) => None,
+                Err(mpsc::TryRecvError::Disconnected) => Some(Err(
+                    "File loading thread terminated unexpectedly".to_string(),
+                )),
             },
-            Err(e) => {
-                self.error_message = Some(format!("Error loading file: {}", e));
-                self.status = "Error loading file".to_string();
-                tracing::error!("Error loading file: {}", e);
-            },
+            None => None,
+        };
+
+        if let Some(result) = file_result {
+            self.loading_rx = None;
+            self.loading = false;
+
+            let canonical_path = match self.loading_path.take() {
+                Some(p) => p,
+                None => return,
+            };
+
+            match result {
+                Ok(dataset) => {
+                    self.explorer.build_from_dataset(&dataset);
+                    self.status = format!(
+                        "{} loaded",
+                        canonical_path
+                            .file_name()
+                            .map(|n| n.to_string_lossy().to_string())
+                            .unwrap_or_else(|| "file".to_string())
+                    );
+                    self.error_message = None;
+                    self.file_path = Some(canonical_path.clone());
+
+                    if let Some(parent) = canonical_path.parent() {
+                        self.file_browser.current_dir = parent.to_path_buf();
+                    }
+
+                    self.dataset = Some(dataset);
+                    tracing::info!("File loaded successfully");
+                },
+                Err(e) => {
+                    self.error_message = Some(format!("Error loading file: {}", e));
+                    // Re-enter file browser so the user can pick a different file.
+                    if self.dataset.is_none() {
+                        self.file_browser_mode = true;
+                        self.status = "Error loading file — press Enter to try another".to_string();
+                    } else {
+                        self.status = "Error reloading file".to_string();
+                    }
+                    tracing::error!("Error loading file: {}", e);
+                },
+            }
         }
-        self.loading = false;
+
+        // Poll variable loading.
+        let var_result = match self.variable_rx.as_ref() {
+            Some(rx) => match rx.try_recv() {
+                Ok(r) => Some(r),
+                Err(mpsc::TryRecvError::Empty) => None,
+                Err(mpsc::TryRecvError::Disconnected) => Some(Err(
+                    "Variable loading thread terminated unexpectedly".to_string(),
+                )),
+            },
+            None => None,
+        };
+
+        if let Some(result) = var_result {
+            self.variable_rx = None;
+            match result {
+                Ok(var) => {
+                    self.data_viewer.load_variable(var);
+                },
+                Err(e) => {
+                    self.data_viewer
+                        .set_error(format!("Failed to load variable: {}", e));
+                    self.status = "Error loading variable".to_string();
+                    tracing::error!("Error loading variable: {}", e);
+                },
+            }
+        }
     }
 
     /// Get the current node.
@@ -165,10 +245,10 @@ impl App {
         };
     }
 
-    /// Toggle data viewer.
+    /// Open or close the data viewer. Opening spawns a background thread to load the variable.
     pub fn toggle_data_viewer(&mut self) {
         if self.data_viewer.visible {
-            self.data_viewer.close();
+            self.close_data_viewer();
             self.status = "Data viewer closed".to_string();
             return;
         }
@@ -195,18 +275,25 @@ impl App {
         };
 
         self.status = format!("Loading {}...", node.name);
+        // Open immediately in a pending state; variable arrives via poll_loading.
+        self.data_viewer.visible = true;
+        self.data_viewer.variable = None;
+        self.data_viewer.error = None;
 
-        match read_variable(&file_path, &node.path) {
-            Ok(loaded_var) => {
-                self.data_viewer.load_variable(loaded_var);
-                self.status = format!("Loaded {}", node.name);
-            },
-            Err(e) => {
-                self.data_viewer
-                    .set_error(format!("Failed to load variable: {}", e));
-                self.status = format!("Error loading {}", node.name);
-            },
-        }
+        let node_path = node.path.clone();
+        let (tx, rx) = mpsc::channel();
+        self.variable_rx = Some(rx);
+
+        thread::spawn(move || {
+            let result = read_variable(&file_path, &node_path).map_err(|e| e.to_string());
+            let _ = tx.send(result);
+        });
+    }
+
+    /// Close the data viewer and cancel any in-flight variable load.
+    pub fn close_data_viewer(&mut self) {
+        self.data_viewer.close();
+        self.variable_rx = None;
     }
 
     /// Cycle to the next theme.
@@ -227,7 +314,7 @@ impl App {
 
     /// Close any open overlays.
     pub fn close_overlay(&mut self) {
-        self.data_viewer.close();
+        self.close_data_viewer();
         self.search.cancel();
     }
 
@@ -250,10 +337,10 @@ impl App {
             self.file_browser_mode = false;
             self.load_file(path);
 
+            // Only canonicalization failures surface synchronously; async read
+            // errors are handled in poll_loading which re-enters browser mode.
             if self.error_message.is_some() {
                 self.file_browser_mode = true;
-                self.status =
-                    "Error loading file (press q to quit, navigate to try another)".to_string();
             }
         }
     }

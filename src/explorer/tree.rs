@@ -2,7 +2,7 @@
 
 use super::ExplorerState;
 use crate::data::{DataNode, DatasetInfo};
-use crate::shared::ThemeColors;
+use crate::theme::ThemeColors;
 use crate::util::formatters::{clean_dtype, get_dimension_type, parse_dimensions};
 use ratatui::{
     layout::Rect,
@@ -94,10 +94,15 @@ pub fn draw_tree(
     dataset: Option<&DatasetInfo>,
     file_path: Option<&PathBuf>,
     area: Rect,
+    loading: bool,
     colors: &ThemeColors,
 ) {
     let Some(_dataset) = dataset else {
-        draw_welcome(f, area, colors);
+        if loading {
+            draw_loading(f, area, file_path, colors);
+        } else {
+            draw_welcome(f, area, colors);
+        }
         return;
     };
 
@@ -167,6 +172,33 @@ pub fn draw_tree(
     );
 
     f.render_widget(list, area);
+}
+
+/// Draw a loading indicator while a file is being read.
+fn draw_loading(f: &mut Frame<'_>, area: Rect, file_path: Option<&PathBuf>, colors: &ThemeColors) {
+    let name = file_path
+        .and_then(|p| p.file_name())
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "file".to_string());
+
+    let lines = vec![
+        Line::from(""),
+        Line::from(Span::styled(
+            format!("Loading {}…", name),
+            Style::default().fg(colors.yellow),
+        )),
+    ];
+
+    f.render_widget(
+        Paragraph::new(lines).block(
+            Block::default()
+                .title(" Coriolis ")
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(colors.bg2))
+                .style(Style::default().bg(colors.bg0)),
+        ),
+        area,
+    );
 }
 
 /// Draw the welcome screen.

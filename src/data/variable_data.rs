@@ -74,9 +74,6 @@ impl CoordinateVar {
 pub struct LoadedVariable {
     /// Variable name.
     pub name: String,
-    /// Variable path.
-    #[allow(dead_code)]
-    pub path: String,
     /// Shape of the data (redundant with data.shape(), but kept for convenience).
     pub shape: Vec<usize>,
     /// Dimension names.
@@ -105,7 +102,6 @@ pub struct LoadedVariable {
     pub coordinates: Vec<Option<CoordinateVar>>,
 }
 
-#[allow(dead_code)]
 impl LoadedVariable {
     /// Get the number of dimensions.
     pub fn ndim(&self) -> usize {
@@ -375,7 +371,6 @@ pub fn read_variable(file_path: &Path, var_path: &str) -> Result<LoadedVariable>
 
     Ok(LoadedVariable {
         name: var_name.to_string(),
-        path: var_path.to_string(),
         shape,
         dim_names,
         attributes,
@@ -563,5 +558,121 @@ fn read_variable_array(var: &netcdf::Variable<'_>, shape: &[usize]) -> Result<Ar
             "Unsupported variable type: {:?}",
             vartype
         ))),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ndarray::ArrayD;
+
+    fn make_var(data: Vec<f64>, shape: Vec<usize>, dim_names: Vec<&str>) -> LoadedVariable {
+        let arr = ArrayD::from_shape_vec(ndarray::IxDyn(&shape), data).unwrap();
+        let ndim = shape.len();
+        LoadedVariable {
+            name: "test".to_string(),
+            shape,
+            dim_names: dim_names.into_iter().map(|s| s.to_string()).collect(),
+            attributes: Default::default(),
+            dtype: "float64".to_string(),
+            data: arr,
+            scale_factor: 1.0,
+            add_offset: 0.0,
+            min_max: None,
+            mean: None,
+            std: None,
+            valid_count: 0,
+            coordinates: vec![None; ndim],
+        }
+    }
+
+    #[test]
+    fn scalar_variable_has_one_element() {
+        let var = make_var(vec![42.0], vec![1], vec!["dim"]);
+        assert_eq!(var.total_elements(), 1);
+    }
+
+    #[test]
+    fn get_1d_slice_extracts_correct_values() {
+        // 2D variable shape [3, 4]: values 0..12
+        let data: Vec<f64> = (0..12).map(|x| x as f64).collect();
+        let var = make_var(data, vec![3, 4], vec!["row", "col"]);
+
+        // Slice along dim 1 (columns), fixing row=1 → values [4,5,6,7]
+        let fixed = vec![1, 0]; // row index 1, col will vary
+        let slice = var.get_1d_slice(1, &fixed, false);
+        assert_eq!(slice, vec![4.0, 5.0, 6.0, 7.0]);
+    }
+
+    #[test]
+    fn get_2d_slice_shape_matches_display_dims() {
+        let data: Vec<f64> = (0..24).map(|x| x as f64).collect();
+        let var = make_var(data, vec![2, 3, 4], vec!["t", "y", "x"]);
+
+        // Display dims: y=1, x=2; fix t=0
+        let fixed = vec![0, 0, 0];
+        let slice = var.get_2d_slice(1, 2, &fixed, false);
+        assert_eq!(slice.len(), 3); // 3 rows (y dimension)
+        assert_eq!(slice[0].len(), 4); // 4 cols (x dimension)
+        assert_eq!(slice[0][0], 0.0);
+        assert_eq!(slice[2][3], 11.0);
+    }
+
+    #[test]
+    fn get_2d_slice_second_time_slice() {
+        let data: Vec<f64> = (0..24).map(|x| x as f64).collect();
+        let var = make_var(data, vec![2, 3, 4], vec!["t", "y", "x"]);
+
+        // t=1: values start at index 12
+        let fixed = vec![1, 0, 0];
+        let slice = var.get_2d_slice(1, 2, &fixed, false);
+        assert_eq!(slice[0][0], 12.0);
+        assert_eq!(slice[2][3], 23.0);
+    }
+
+    #[test]
+    fn scale_value_applies_cf_convention() {
+        let var = LoadedVariable {
+            scale_factor: 0.1,
+            add_offset: 5.0,
+            ..make_var(vec![100.0], vec![1], vec!["x"])
+        };
+        // scaled = raw * scale + offset = 100 * 0.1 + 5 = 15
+        assert!((var.scale_value(100.0) - 15.0).abs() < 1e-10);
+    }
+
+    #[test]
+    fn scale_identity_when_no_scale_offset() {
+        let var = make_var(vec![3.14], vec![1], vec!["x"]);
+        assert!(!var.has_scale_offset());
+        assert!((var.scale_value(3.14) - 3.14).abs() < 1e-10);
+    }
+
+    #[test]
+    fn get_1d_slice_applies_scale() {
+        let data = vec![10.0, 20.0, 30.0];
+        let var = LoadedVariable {
+            scale_factor: 2.0,
+            add_offset: 1.0,
+            ..make_var(data, vec![3], vec!["x"])
+        };
+        let fixed = vec![0];
+        let scaled = var.get_1d_slice(0, &fixed, true);
+        assert_eq!(scaled, vec![21.0, 41.0, 61.0]);
+    }
+
+    #[test]
+    fn ndim_reflects_shape_rank() {
+        let var1d = make_var(vec![1.0, 2.0], vec![2], vec!["x"]);
+        assert_eq!(var1d.ndim(), 1);
+
+        let var3d = make_var(vec![0.0; 24], vec![2, 3, 4], vec!["t", "y", "x"]);
+        assert_eq!(var3d.ndim(), 3);
+    }
+
+    #[test]
+    fn coord_label_falls_back_to_index_when_no_coord() {
+        let var = make_var(vec![1.0, 2.0, 3.0], vec![3], vec!["x"]);
+        assert_eq!(var.get_coord_label(0, 2), "2");
     }
 }

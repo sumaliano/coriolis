@@ -1,7 +1,7 @@
 # Clippy configuration for Coriolis
 
 # Minimum supported Rust version
-msrv = "1.70"
+msrv = "1.75"
 
 # Cognitive complexity threshold
 cognitive-complexity-threshold = 30

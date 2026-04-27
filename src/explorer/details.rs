@@ -1,7 +1,7 @@
 //! Details pane formatting for tree nodes.
 
 use crate::data::DataNode;
-use crate::shared::ThemeColors;
+use crate::theme::ThemeColors;
 use crate::util::formatters::{clean_dtype, format_number, get_dimension_type, parse_dimensions};
 use ratatui::{
     style::{Modifier, Style},
@@ -9,13 +9,17 @@ use ratatui::{
 };
 
 /// Format node details for display in the details pane.
-pub fn format_node_details(node: &DataNode, colors: &ThemeColors) -> Vec<Line<'static>> {
+pub fn format_node_details(
+    node: &DataNode,
+    colors: &ThemeColors,
+    width: u16,
+) -> Vec<Line<'static>> {
     if node.is_group() {
-        return format_group_details(node, colors);
+        return format_group_details(node, colors, width);
     }
 
     if node.is_variable() {
-        return format_variable_details(node, colors);
+        return format_variable_details(node, colors, width);
     }
 
     // Generic node format
@@ -34,7 +38,12 @@ pub fn format_node_details(node: &DataNode, colors: &ThemeColors) -> Vec<Line<'s
 }
 
 /// Format variable node details.
-fn format_variable_details(node: &DataNode, colors: &ThemeColors) -> Vec<Line<'static>> {
+fn format_variable_details(
+    node: &DataNode,
+    colors: &ThemeColors,
+    width: u16,
+) -> Vec<Line<'static>> {
+    let sep_width = (width as usize).saturating_sub(2).max(1);
     let mut lines = vec![
         Line::from(Span::styled(
             node.name.clone(),
@@ -43,7 +52,7 @@ fn format_variable_details(node: &DataNode, colors: &ThemeColors) -> Vec<Line<'s
                 .add_modifier(Modifier::BOLD),
         )),
         Line::from(Span::styled(
-            "─".repeat(50),
+            "─".repeat(sep_width),
             Style::default().fg(colors.bg2),
         )),
         Line::from(vec![
@@ -161,7 +170,8 @@ fn format_variable_details(node: &DataNode, colors: &ThemeColors) -> Vec<Line<'s
 }
 
 /// Format group node details.
-fn format_group_details(node: &DataNode, colors: &ThemeColors) -> Vec<Line<'static>> {
+fn format_group_details(node: &DataNode, colors: &ThemeColors, width: u16) -> Vec<Line<'static>> {
+    let sep_width = (width as usize).saturating_sub(2).max(1);
     let mut lines = vec![
         Line::from(Span::styled(
             node.name.clone(),
@@ -170,7 +180,7 @@ fn format_group_details(node: &DataNode, colors: &ThemeColors) -> Vec<Line<'stat
                 .add_modifier(Modifier::BOLD),
         )),
         Line::from(Span::styled(
-            "─".repeat(50),
+            "─".repeat(sep_width),
             Style::default().fg(colors.bg2),
         )),
         Line::from(vec![

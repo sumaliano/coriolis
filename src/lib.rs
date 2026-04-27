@@ -63,10 +63,7 @@ pub mod error;
 pub mod explorer;
 /// File browser feature.
 pub mod file_browser;
-/// Search functionality.
-pub mod search;
-/// Shared UI components (themes, formatters, widgets).
-pub mod shared;
+mod theme;
 /// Utility functions.
 pub mod util;
 

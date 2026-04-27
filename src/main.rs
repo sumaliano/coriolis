@@ -102,21 +102,23 @@ fn run_app<B: ratatui::backend::Backend>(terminal: &mut Terminal<B>, mut app: Ap
 where
     <B as ratatui::backend::Backend>::Error: Send + Sync + 'static,
 {
-    let mut pending_g = false; // For 'gg' vim binding
-
     loop {
+        app.poll_loading();
         terminal.draw(|f| ui::draw(f, &mut app))?;
 
         if event::poll(std::time::Duration::from_millis(100))? {
             if let Event::Key(key) = event::read()? {
-                // Overlay mode - handle separately
+                // Data viewer overlay
                 if app.data_viewer.visible {
+                    // Clear ephemeral status on every keypress so old hints don't linger.
+                    app.data_viewer.clear_status();
+
                     match (key.modifiers, key.code) {
                         // Close overlay
                         (KeyModifiers::NONE, KeyCode::Esc)
                         | (KeyModifiers::NONE, KeyCode::Char('q'))
                         | (KeyModifiers::NONE, KeyCode::Char('p')) => {
-                            app.data_viewer.close();
+                            app.close_data_viewer();
                             app.status = "Data viewer closed".to_string();
                         },
                         // Cycle view mode with Tab
@@ -125,22 +127,54 @@ where
                             let view_name = app.data_viewer.view_mode.name();
                             app.data_viewer.set_status(format!("View: {}", view_name));
                         },
-                        // Cycle color palette with C
-                        (KeyModifiers::NONE, KeyCode::Char('c'))
-                        | (KeyModifiers::NONE, KeyCode::Char('C')) => {
+                        // Cycle Y-axis dimension
+                        (KeyModifiers::NONE, KeyCode::Char('y')) => {
+                            app.data_viewer.cycle_display_dim(0);
+                            let status_msg = if let Some(ref var) = app.data_viewer.variable {
+                                let dim_idx = app.data_viewer.slicing.display_dims.0;
+                                let dim_name = var
+                                    .dim_names
+                                    .get(dim_idx)
+                                    .map(|s| s.as_str())
+                                    .unwrap_or("?");
+                                format!("Y dimension: {}", dim_name)
+                            } else {
+                                "Cycled Y dimension".to_string()
+                            };
+                            app.data_viewer.set_status(status_msg);
+                        },
+                        // Cycle X-axis dimension (Table and Heatmap only)
+                        (KeyModifiers::NONE, KeyCode::Char('x')) => {
+                            if !matches!(app.data_viewer.view_mode, ViewMode::Plot1D) {
+                                app.data_viewer.cycle_display_dim(1);
+                                let status_msg = if let Some(ref var) = app.data_viewer.variable {
+                                    let dim_idx = app.data_viewer.slicing.display_dims.1;
+                                    let dim_name = var
+                                        .dim_names
+                                        .get(dim_idx)
+                                        .map(|s| s.as_str())
+                                        .unwrap_or("?");
+                                    format!("X dimension: {}", dim_name)
+                                } else {
+                                    "Cycled X dimension".to_string()
+                                };
+                                app.data_viewer.set_status(status_msg);
+                            }
+                        },
+                        // Cycle color palette (Shift+C)
+                        (KeyModifiers::SHIFT, KeyCode::Char('C')) => {
                             app.data_viewer.cycle_color_palette();
                             let palette_name = app.data_viewer.color_palette.name();
                             app.data_viewer
                                 .set_status(format!("Palette: {}", palette_name));
                         },
-                        // Contextual arrows/hjkl
-                        // Table: pan; Plot1D: move cursor; Heatmap: move crosshair
+                        // Navigation: Table=pan, Plot1D=cursor, Heatmap=crosshair
                         (KeyModifiers::NONE, KeyCode::Up)
                         | (KeyModifiers::NONE, KeyCode::Char('k')) => {
                             match app.data_viewer.view_mode {
                                 ViewMode::Table => app.data_viewer.scroll_up(1),
                                 ViewMode::Heatmap => app.data_viewer.move_heat_cursor(-1, 0),
-                                ViewMode::Plot1D => { /* reserved for future y-zoom */ },
+                                ViewMode::Plot1D => {},
                             }
                         },
                         (KeyModifiers::NONE, KeyCode::Down)
@@ -148,7 +182,7 @@ where
                             match app.data_viewer.view_mode {
                                 ViewMode::Table => app.data_viewer.scroll_down(1),
                                 ViewMode::Heatmap => app.data_viewer.move_heat_cursor(1, 0),
-                                ViewMode::Plot1D => { /* reserved for future y-zoom */ },
+                                ViewMode::Plot1D => {},
                             }
                         },
                         (KeyModifiers::NONE, KeyCode::Left)
@@ -167,14 +201,14 @@ where
                                 ViewMode::Plot1D => app.data_viewer.plot_cursor_right(),
                             }
                         },
-                        // Page up/down for large scrolling
+                        // Large scroll
                         (KeyModifiers::CONTROL, KeyCode::Char('u')) => {
                             app.data_viewer.scroll_up(10);
                         },
                         (KeyModifiers::CONTROL, KeyCode::Char('d')) => {
                             app.data_viewer.scroll_down(10);
                         },
-                        // Dimension selector navigation (Tab through dimensions for 3D+ data)
+                        // Select active slice dimension
                         (KeyModifiers::NONE, KeyCode::Char('s')) => {
                             app.data_viewer.next_dim_selector();
                             let status_msg = if let Some(dim) =
@@ -194,74 +228,36 @@ where
                                 app.data_viewer.set_status(msg);
                             }
                         },
-                        // Slice navigation with PageUp/PageDown
-                        (KeyModifiers::NONE, KeyCode::PageUp) => {
-                            app.data_viewer.increment_active_slice();
-                        },
-                        (KeyModifiers::NONE, KeyCode::PageDown) => {
-                            app.data_viewer.decrement_active_slice();
-                        },
-                        // Also keep +/- for slice navigation
-                        (KeyModifiers::NONE, KeyCode::Char(']'))
+                        // Slice navigation
+                        (KeyModifiers::NONE, KeyCode::PageUp)
+                        | (KeyModifiers::NONE, KeyCode::Char(']'))
                         | (KeyModifiers::NONE, KeyCode::Char('+'))
                         | (KeyModifiers::NONE, KeyCode::Char('=')) => {
                             app.data_viewer.increment_active_slice();
                         },
-                        (KeyModifiers::NONE, KeyCode::Char('['))
+                        (KeyModifiers::NONE, KeyCode::PageDown)
+                        | (KeyModifiers::NONE, KeyCode::Char('['))
                         | (KeyModifiers::NONE, KeyCode::Char('-'))
                         | (KeyModifiers::NONE, KeyCode::Char('_')) => {
                             app.data_viewer.decrement_active_slice();
                         },
-                        // Change which dimensions are displayed (Table and Heatmap only)
+                        // Rotate display dimensions (Table and Heatmap only)
                         (KeyModifiers::NONE, KeyCode::Char('r'))
                         | (KeyModifiers::NONE, KeyCode::Char('R')) => {
                             if !matches!(app.data_viewer.view_mode, ViewMode::Plot1D) {
                                 app.data_viewer.rotate_display_dims();
                                 app.data_viewer
-                                    .set_status("Rotated Y ↔ X dimensions".to_string());
+                                    .set_status("Rotated Y \u{2194} X dimensions".to_string());
                             }
                         },
-                        // Clipboard export remains below
-                        (KeyModifiers::CONTROL, KeyCode::Char('c')) => {
-                            app.data_viewer.copy_visible_to_clipboard();
-                            app.data_viewer
-                                .set_status("Copied visible data to clipboard (TSV)".to_string());
-                        },
-                        (KeyModifiers::NONE, KeyCode::Char('y'))
-                        | (KeyModifiers::NONE, KeyCode::Char('Y')) => {
-                            app.data_viewer.cycle_display_dim(0);
-                            // Show which dimension was selected
-                            let status_msg = if let Some(ref var) = app.data_viewer.variable {
-                                let dim_idx = app.data_viewer.slicing.display_dims.0;
-                                let dim_name = var
-                                    .dim_names
-                                    .get(dim_idx)
-                                    .map(|s| s.as_str())
-                                    .unwrap_or("?");
-                                format!("Y dimension: {}", dim_name)
-                            } else {
-                                "Cycled Y dimension".to_string()
-                            };
-                            app.data_viewer.set_status(status_msg);
-                        },
-                        (KeyModifiers::NONE, KeyCode::Char('x'))
-                        | (KeyModifiers::NONE, KeyCode::Char('X')) => {
-                            // X dimension cycling only makes sense in Table and Heatmap modes
-                            if !matches!(app.data_viewer.view_mode, ViewMode::Plot1D) {
-                                app.data_viewer.cycle_display_dim(1);
-                                // Show which dimension was selected
-                                let status_msg = if let Some(ref var) = app.data_viewer.variable {
-                                    let dim_idx = app.data_viewer.slicing.display_dims.1;
-                                    let dim_name = var
-                                        .dim_names
-                                        .get(dim_idx)
-                                        .map(|s| s.as_str())
-                                        .unwrap_or("?");
-                                    format!("X dimension: {}", dim_name)
-                                } else {
-                                    "Cycled X dimension".to_string()
-                                };
-                                app.data_viewer.set_status(status_msg);
+                        // Copy visible data to clipboard
+                        (KeyModifiers::NONE, KeyCode::Char('c'))
+                        | (KeyModifiers::NONE, KeyCode::Char('C')) => {
+                            match app.data_viewer.copy_visible_to_clipboard() {
+                                Ok(()) => app
+                                    .data_viewer
+                                    .set_status("Copied to clipboard (TSV)".to_string()),
+                                Err(e) => app.data_viewer.set_status(format!("Copy failed: {}", e)),
                             }
                         },
                         // Toggle scale/offset
@@ -290,7 +286,7 @@ where
                     continue;
                 }
 
-                // Search mode - handle separately
+                // Search mode
                 if app.search.is_active() {
                     match key.code {
                         KeyCode::Enter => {
@@ -315,103 +311,64 @@ where
                 // File browser mode
                 if app.file_browser_mode {
                     match (key.modifiers, key.code) {
-                        // Quit
                         (KeyModifiers::NONE, KeyCode::Char('q')) => return Ok(()),
-
-                        // Navigation
                         (KeyModifiers::NONE, KeyCode::Up)
-                        | (KeyModifiers::NONE, KeyCode::Char('k')) => {
-                            app.browser_up();
-                        },
+                        | (KeyModifiers::NONE, KeyCode::Char('k')) => app.browser_up(),
                         (KeyModifiers::NONE, KeyCode::Down)
-                        | (KeyModifiers::NONE, KeyCode::Char('j')) => {
-                            app.browser_down();
-                        },
-
-                        // Select/Open
+                        | (KeyModifiers::NONE, KeyCode::Char('j')) => app.browser_down(),
                         (KeyModifiers::NONE, KeyCode::Enter)
                         | (KeyModifiers::NONE, KeyCode::Char('l'))
-                        | (KeyModifiers::NONE, KeyCode::Right) => {
-                            app.browser_select();
-                        },
-
-                        // Go to parent directory
+                        | (KeyModifiers::NONE, KeyCode::Right) => app.browser_select(),
                         (KeyModifiers::NONE, KeyCode::Char('h'))
-                        | (KeyModifiers::NONE, KeyCode::Left) => {
-                            if let Some(parent) = app.file_browser.current_dir.parent() {
-                                app.file_browser.current_dir = parent.to_path_buf();
-                                app.file_browser.load_directory();
-                            }
-                        },
-
-                        // Toggle show hidden
-                        (KeyModifiers::NONE, KeyCode::Char('.')) => {
-                            app.toggle_hidden();
-                        },
-
+                        | (KeyModifiers::NONE, KeyCode::Left) => app.browser_parent(),
+                        (KeyModifiers::NONE, KeyCode::Char('.')) => app.toggle_hidden(),
                         _ => {},
                     }
                     continue;
                 }
 
-                // Normal mode
+                // Normal explorer mode
                 match (key.modifiers, key.code) {
-                    // Quit
                     (KeyModifiers::NONE, KeyCode::Char('q')) => return Ok(()),
 
-                    // Navigation
+                    // Navigation — preview_scroll reset is handled inside each method
                     (KeyModifiers::NONE, KeyCode::Up)
-                    | (KeyModifiers::NONE, KeyCode::Char('k')) => {
-                        app.explorer.cursor_up();
-                        app.explorer.preview_scroll = 0;
-                    },
+                    | (KeyModifiers::NONE, KeyCode::Char('k')) => app.explorer.cursor_up(),
                     (KeyModifiers::NONE, KeyCode::Down)
-                    | (KeyModifiers::NONE, KeyCode::Char('j')) => {
-                        app.explorer.cursor_down();
-                        app.explorer.preview_scroll = 0;
-                    },
+                    | (KeyModifiers::NONE, KeyCode::Char('j')) => app.explorer.cursor_down(),
                     (KeyModifiers::NONE, KeyCode::Left)
-                    | (KeyModifiers::NONE, KeyCode::Char('h')) => {
-                        app.explorer.collapse_current();
-                    },
+                    | (KeyModifiers::NONE, KeyCode::Char('h')) => app.explorer.collapse_current(),
                     (KeyModifiers::NONE, KeyCode::Right)
-                    | (KeyModifiers::NONE, KeyCode::Char('l')) => {
-                        app.explorer.expand_current();
-                    },
+                    | (KeyModifiers::NONE, KeyCode::Char('l')) => app.explorer.expand_current(),
 
-                    // Vim navigation
+                    // Vim jump-to-first (gg)
                     (KeyModifiers::NONE, KeyCode::Char('g')) => {
-                        if pending_g {
+                        if app.pending_g {
                             app.explorer.goto_first();
-                            app.explorer.preview_scroll = 0;
-                            pending_g = false;
+                            app.pending_g = false;
                         } else {
-                            pending_g = true;
+                            app.pending_g = true;
                         }
                     },
-                    (KeyModifiers::SHIFT, KeyCode::Char('G')) => {
-                        app.explorer.goto_last();
-                        app.explorer.preview_scroll = 0;
-                    },
+                    // Jump to last (G)
+                    (KeyModifiers::SHIFT, KeyCode::Char('G')) => app.explorer.goto_last(),
+                    // Page down / Ctrl+F
                     (KeyModifiers::CONTROL, KeyCode::Char('f'))
                     | (KeyModifiers::NONE, KeyCode::PageDown) => {
                         for _ in 0..15 {
                             app.explorer.cursor_down();
                         }
-                        app.explorer.preview_scroll = 0;
                     },
+                    // Page up / Ctrl+B
                     (KeyModifiers::CONTROL, KeyCode::Char('b'))
                     | (KeyModifiers::NONE, KeyCode::PageUp) => {
                         for _ in 0..15 {
                             app.explorer.cursor_up();
                         }
-                        app.explorer.preview_scroll = 0;
                     },
 
                     // Search
-                    (KeyModifiers::NONE, KeyCode::Char('/')) => {
-                        app.search.start();
-                    },
+                    (KeyModifiers::NONE, KeyCode::Char('/')) => app.search.start(),
                     (KeyModifiers::NONE, KeyCode::Char('n')) => {
                         app.search.next_match();
                         if let Some(path) = app.search.current_match_path() {
@@ -426,18 +383,10 @@ where
                     },
 
                     // Features
-                    (KeyModifiers::NONE, KeyCode::Char('p')) => {
-                        app.toggle_data_viewer();
-                    },
-                    (KeyModifiers::NONE, KeyCode::Char('t')) => {
-                        app.toggle_preview();
-                    },
-                    (KeyModifiers::NONE, KeyCode::Char('f')) => {
-                        app.open_file_browser_at_current();
-                    },
-                    (KeyModifiers::SHIFT, KeyCode::Char('T')) => {
-                        app.cycle_theme();
-                    },
+                    (KeyModifiers::NONE, KeyCode::Char('p')) => app.toggle_data_viewer(),
+                    (KeyModifiers::NONE, KeyCode::Char('t')) => app.toggle_preview(),
+                    (KeyModifiers::NONE, KeyCode::Char('f')) => app.open_file_browser_at_current(),
+                    (KeyModifiers::SHIFT, KeyCode::Char('T')) => app.cycle_theme(),
                     (KeyModifiers::SHIFT, KeyCode::Char('?')) => {
                         app.status = "Keys: hjkl/arrows=nav | /=search n/N=next/prev | t=details p=plot | c=copy-tree y=copy-node | T=theme | q=quit".to_string();
                     },
@@ -474,21 +423,15 @@ where
 
                     // Preview scrolling
                     (KeyModifiers::CONTROL, KeyCode::Char('d'))
-                    | (KeyModifiers::SHIFT, KeyCode::Char('J')) => {
-                        app.scroll_preview_down();
-                    },
+                    | (KeyModifiers::SHIFT, KeyCode::Char('J')) => app.scroll_preview_down(),
                     (KeyModifiers::CONTROL, KeyCode::Char('u'))
-                    | (KeyModifiers::SHIFT, KeyCode::Char('K')) => {
-                        app.scroll_preview_up();
-                    },
+                    | (KeyModifiers::SHIFT, KeyCode::Char('K')) => app.scroll_preview_up(),
 
-                    // Escape - close overlays
-                    (KeyModifiers::NONE, KeyCode::Esc) => {
-                        app.close_overlay();
-                    },
+                    // Escape — close overlays
+                    (KeyModifiers::NONE, KeyCode::Esc) => app.close_overlay(),
 
                     _ => {
-                        pending_g = false;
+                        app.pending_g = false;
                     },
                 }
             }
