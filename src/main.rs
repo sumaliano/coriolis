@@ -108,6 +108,10 @@ where
 
         if event::poll(std::time::Duration::from_millis(100))? {
             if let Event::Key(key) = event::read()? {
+                // Any keypress cancels a pending 'g'. The 'gg' handler re-sets it when needed.
+                let was_pending_g = app.pending_g;
+                app.pending_g = false;
+
                 // Data viewer overlay
                 if app.data_viewer.visible {
                     // Clear ephemeral status on every keypress so old hints don't linger.
@@ -343,9 +347,8 @@ where
 
                     // Vim jump-to-first (gg)
                     (KeyModifiers::NONE, KeyCode::Char('g')) => {
-                        if app.pending_g {
+                        if was_pending_g {
                             app.explorer.goto_first();
-                            app.pending_g = false;
                         } else {
                             app.pending_g = true;
                         }
@@ -430,9 +433,7 @@ where
                     // Escape — close overlays
                     (KeyModifiers::NONE, KeyCode::Esc) => app.close_overlay(),
 
-                    _ => {
-                        app.pending_g = false;
-                    },
+                    _ => {},
                 }
             }
         }
