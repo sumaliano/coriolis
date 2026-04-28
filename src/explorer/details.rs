@@ -150,30 +150,115 @@ fn format_variable_details(
         ]));
     }
 
-    // Sample values for small variables — lets users check coordinates / flag values inline
     if let Some(sample) = &node.sample {
+        let shape = node.shape.as_deref().unwrap_or(&[]);
+        let total: usize = shape.iter().product();
+
         lines.push(Line::from(""));
         lines.push(Line::from(Span::styled(
-            "Values:",
+            "Sample:",
             Style::default()
                 .fg(colors.yellow)
                 .add_modifier(Modifier::BOLD),
         )));
-        let formatted: Vec<String> = sample.iter().map(|v| format_sample_value(*v)).collect();
-        lines.push(Line::from(Span::styled(
-            format!("  {}", formatted.join(",  ")),
-            Style::default().fg(colors.aqua),
-        )));
-    }
 
-    // Fill value / valid range — prominently if no sample
-    if node.sample.is_none() {
+        if shape.len() == 2 {
+            // Grid display: reader gave us up to SAMPLE_ROWS×SAMPLE_COLS values
+            const SAMPLE_ROWS: usize = 3;
+            const SAMPLE_COLS: usize = 4;
+            let rows_shown = shape[0].min(SAMPLE_ROWS);
+            let cols_shown = shape[1].min(SAMPLE_COLS);
+            let n = (rows_shown * cols_shown).min(sample.len());
+
+            let formatted: Vec<String> = sample[..n]
+                .iter()
+                .map(|v| format_sample_value(*v))
+                .collect();
+            let col_w = formatted.iter().map(|s| s.len()).max().unwrap_or(4);
+
+            for r in 0..rows_shown {
+                let mut row_spans = vec![Span::styled("  ", Style::default())];
+                for c in 0..cols_shown {
+                    let idx = r * cols_shown + c;
+                    if idx >= n {
+                        break;
+                    }
+                    if c > 0 {
+                        row_spans.push(Span::styled("  ", Style::default()));
+                    }
+                    row_spans.push(Span::styled(
+                        format!("{:>width$}", formatted[idx], width = col_w),
+                        Style::default().fg(colors.aqua),
+                    ));
+                }
+                lines.push(Line::from(row_spans));
+            }
+
+            if rows_shown < shape[0] || cols_shown < shape[1] {
+                lines.push(Line::from(Span::styled(
+                    format!("  … ({}×{} total)", shape[0], shape[1]),
+                    Style::default().fg(colors.fg1),
+                )));
+            }
+        } else {
+            // Flat display for 0D, 1D, 3D+
+            const MAX_SHOWN: usize = 6;
+            let shown = &sample[..sample.len().min(MAX_SHOWN)];
+            let formatted: Vec<String> = shown.iter().map(|v| format_sample_value(*v)).collect();
+
+            let mut value_spans: Vec<Span<'static>> = vec![Span::styled("  ", Style::default())];
+            value_spans.push(Span::styled(
+                formatted.join(",  "),
+                Style::default().fg(colors.aqua),
+            ));
+            if sample.len() > MAX_SHOWN || sample.len() < total {
+                let shape_str = if shape.len() >= 3 {
+                    shape
+                        .iter()
+                        .map(|d| d.to_string())
+                        .collect::<Vec<_>>()
+                        .join("×")
+                } else {
+                    total.to_string()
+                };
+                value_spans.push(Span::styled(
+                    format!("  … ({} total)", shape_str),
+                    Style::default().fg(colors.fg1),
+                ));
+            }
+            lines.push(Line::from(value_spans));
+        }
+    } else {
+        // For larger/higher-dimensional variables: show valid range and fill value if present
         let fill = node
             .attributes
             .get("_FillValue")
             .or_else(|| node.attributes.get("missing_value"));
-        if let Some(fv) = fill {
+        let valid_min = node.attributes.get("valid_min");
+        let valid_max = node.attributes.get("valid_max");
+
+        if fill.is_some() || valid_min.is_some() || valid_max.is_some() {
             lines.push(Line::from(""));
+        }
+        if let (Some(vmin), Some(vmax)) = (valid_min, valid_max) {
+            lines.push(Line::from(vec![
+                Span::styled("  Range: ", Style::default().fg(colors.fg1)),
+                Span::styled(vmin.clone(), Style::default().fg(colors.aqua)),
+                Span::styled(" → ", Style::default().fg(colors.fg1)),
+                Span::styled(vmax.clone(), Style::default().fg(colors.aqua)),
+            ]));
+        } else if let Some(vmin) = valid_min {
+            lines.push(Line::from(vec![
+                Span::styled("  Valid min: ", Style::default().fg(colors.fg1)),
+                Span::styled(vmin.clone(), Style::default().fg(colors.aqua)),
+            ]));
+        } else if let Some(vmax) = valid_max {
+            lines.push(Line::from(vec![
+                Span::styled("  Valid max: ", Style::default().fg(colors.fg1)),
+                Span::styled(vmax.clone(), Style::default().fg(colors.aqua)),
+            ]));
+        }
+        if let Some(fv) = fill {
             lines.push(Line::from(vec![
                 Span::styled("  Fill value: ", Style::default().fg(colors.fg1)),
                 Span::styled(fv.clone(), Style::default().fg(colors.orange)),
@@ -208,21 +293,8 @@ fn format_variable_details(
     }
 
     lines.push(Line::from(""));
-    lines.push(Line::from(Span::styled(
-        "Actions:",
-        Style::default()
-            .fg(colors.yellow)
-            .add_modifier(Modifier::BOLD),
-    )));
     lines.push(Line::from(vec![
         Span::styled("Press ", Style::default().fg(colors.fg1)),
-        Span::styled(
-            "Enter",
-            Style::default()
-                .fg(colors.yellow)
-                .add_modifier(Modifier::BOLD),
-        ),
-        Span::styled(" or ", Style::default().fg(colors.fg1)),
         Span::styled(
             "p",
             Style::default()

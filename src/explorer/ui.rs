@@ -146,9 +146,9 @@ fn draw_keymap(
     } else if search_active {
         "Search: Enter | Cancel: Esc | Type to search..."
     } else if show_preview {
-        "Nav: hjkl/↑↓ | Scroll details: ^D/^U | Search: / n N | Plot: p | Copy: c y | t=hide | Quit: q"
+        "Nav: hjkl/↑↓ | Scroll details: ^D/^U | Search: / n N | Plot: p | File: f | Copy: c y | t=hide | Quit: q"
     } else {
-        "Nav: hjkl/↑↓ | Search: / n N | Details: t | Plot: p | Copy: c y | Theme: T | Help: ? | Quit: q"
+        "Nav: hjkl/↑↓ | Search: / n N | Details: t | Plot: p | File: f | Copy: c y | Theme: T | Help: ? | Quit: q"
     };
 
     let paragraph =

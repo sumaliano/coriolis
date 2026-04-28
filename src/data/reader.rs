@@ -116,8 +116,7 @@ impl DataReader {
             .map(|d: &netcdf::Dimension<'_>| d.len())
             .collect();
 
-        let total: usize = shape.iter().product();
-        var_node.sample = Self::try_read_sample(var, total);
+        var_node.sample = Self::try_read_sample(var, &shape);
         var_node.shape = Some(shape);
         var_node.dtype = Some(format!("{:?}", var.vartype()));
 
@@ -141,12 +140,41 @@ impl DataReader {
         var_node
     }
 
-    /// Try to read all values for small variables (≤ 10 elements) as f64.
-    /// Returns None for large variables, string types, or read errors.
-    fn try_read_sample(var: &netcdf::Variable<'_>, total: usize) -> Option<Vec<f64>> {
-        if total == 0 || total > 10 {
+    /// Read a small preview block from a variable for the details pane.
+    ///
+    /// - 0D (scalar): full read via RangeFull.
+    /// - 1D: up to 6 elements from the start.
+    /// - 2D: up to 3×4 = 12 elements (a grid block), stored row-major.
+    /// - 3D+: up to 6 elements along the last dimension at index-zero for
+    ///   all other dims (a single row from the innermost slice).
+    ///
+    /// All reads are true partial reads — no full-array load.
+    fn try_read_sample(var: &netcdf::Variable<'_>, shape: &[usize]) -> Option<Vec<f64>> {
+        let total: usize = shape.iter().product();
+        if total == 0 {
             return None;
         }
+
+        let ndim = shape.len();
+
+        if ndim == 0 {
+            return Self::read_full(var);
+        }
+
+        let starts = vec![0usize; ndim];
+        let mut counts = vec![1usize; ndim];
+
+        if ndim == 2 {
+            counts[0] = shape[0].min(3);
+            counts[1] = shape[1].min(4);
+        } else {
+            counts[ndim - 1] = shape[ndim - 1].min(6);
+        }
+
+        Self::read_partial(var, &starts, &counts)
+    }
+
+    fn read_full(var: &netcdf::Variable<'_>) -> Option<Vec<f64>> {
         match var.vartype() {
             NcVariableType::Float(FloatType::F64) => var.get_values::<f64, _>(..).ok(),
             NcVariableType::Float(FloatType::F32) => {
@@ -157,23 +185,90 @@ impl DataReader {
                 let v: Vec<i64> = var.get_values(..).ok()?;
                 Some(v.into_iter().map(|x| x as f64).collect())
             },
-            NcVariableType::Int(IntType::I32) => {
-                let v: Vec<i32> = var.get_values(..).ok()?;
+            NcVariableType::Int(IntType::U64) => {
+                let v: Vec<u64> = var.get_values(..).ok()?;
                 Some(v.into_iter().map(|x| x as f64).collect())
             },
-            NcVariableType::Int(IntType::I16) => {
-                let v: Vec<i16> = var.get_values(..).ok()?;
+            NcVariableType::Int(IntType::I32) => {
+                let v: Vec<i32> = var.get_values(..).ok()?;
                 Some(v.into_iter().map(|x| x as f64).collect())
             },
             NcVariableType::Int(IntType::U32) => {
                 let v: Vec<u32> = var.get_values(..).ok()?;
                 Some(v.into_iter().map(|x| x as f64).collect())
             },
+            NcVariableType::Int(IntType::I16) => {
+                let v: Vec<i16> = var.get_values(..).ok()?;
+                Some(v.into_iter().map(|x| x as f64).collect())
+            },
             NcVariableType::Int(IntType::U16) => {
                 let v: Vec<u16> = var.get_values(..).ok()?;
                 Some(v.into_iter().map(|x| x as f64).collect())
             },
-            _ => None,
+            NcVariableType::Int(IntType::I8) => {
+                let v: Vec<i8> = var.get_values(..).ok()?;
+                Some(v.into_iter().map(|x| x as f64).collect())
+            },
+            NcVariableType::Int(IntType::U8) => {
+                let v: Vec<u8> = var.get_values(..).ok()?;
+                Some(v.into_iter().map(|x| x as f64).collect())
+            },
+            other => {
+                tracing::debug!("no sample: unhandled type {:?}", other);
+                None
+            },
+        }
+    }
+
+    fn read_partial(
+        var: &netcdf::Variable<'_>,
+        starts: &[usize],
+        counts: &[usize],
+    ) -> Option<Vec<f64>> {
+        match var.vartype() {
+            NcVariableType::Float(FloatType::F64) => {
+                var.get_values::<f64, _>((starts, counts)).ok()
+            },
+            NcVariableType::Float(FloatType::F32) => {
+                let v: Vec<f32> = var.get_values((starts, counts)).ok()?;
+                Some(v.into_iter().map(|x| x as f64).collect())
+            },
+            NcVariableType::Int(IntType::I64) => {
+                let v: Vec<i64> = var.get_values((starts, counts)).ok()?;
+                Some(v.into_iter().map(|x| x as f64).collect())
+            },
+            NcVariableType::Int(IntType::U64) => {
+                let v: Vec<u64> = var.get_values((starts, counts)).ok()?;
+                Some(v.into_iter().map(|x| x as f64).collect())
+            },
+            NcVariableType::Int(IntType::I32) => {
+                let v: Vec<i32> = var.get_values((starts, counts)).ok()?;
+                Some(v.into_iter().map(|x| x as f64).collect())
+            },
+            NcVariableType::Int(IntType::U32) => {
+                let v: Vec<u32> = var.get_values((starts, counts)).ok()?;
+                Some(v.into_iter().map(|x| x as f64).collect())
+            },
+            NcVariableType::Int(IntType::I16) => {
+                let v: Vec<i16> = var.get_values((starts, counts)).ok()?;
+                Some(v.into_iter().map(|x| x as f64).collect())
+            },
+            NcVariableType::Int(IntType::U16) => {
+                let v: Vec<u16> = var.get_values((starts, counts)).ok()?;
+                Some(v.into_iter().map(|x| x as f64).collect())
+            },
+            NcVariableType::Int(IntType::I8) => {
+                let v: Vec<i8> = var.get_values((starts, counts)).ok()?;
+                Some(v.into_iter().map(|x| x as f64).collect())
+            },
+            NcVariableType::Int(IntType::U8) => {
+                let v: Vec<u8> = var.get_values((starts, counts)).ok()?;
+                Some(v.into_iter().map(|x| x as f64).collect())
+            },
+            other => {
+                tracing::debug!("no sample: unhandled type {:?}", other);
+                None
+            },
         }
     }
 
@@ -206,5 +301,102 @@ impl DataReader {
             Ok(AttributeValue::Strs(v)) => v.join(", "),
             Err(_) => format!("{:?}", attr),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn write_test_nc(path: &std::path::Path, shape: &[usize], values: &[f32]) {
+        let mut file = netcdf::create(path).unwrap();
+        let dim_names: Vec<String> = (0..shape.len()).map(|i| format!("d{}", i)).collect();
+        for (name, &len) in dim_names.iter().zip(shape.iter()) {
+            file.add_dimension(name, len).unwrap();
+        }
+        let names: Vec<&str> = dim_names.iter().map(|s| s.as_str()).collect();
+        let mut var = file.add_variable::<f32>("v", &names).unwrap();
+        var.put_values(values, ..).unwrap();
+    }
+
+    #[test]
+    fn sample_scalar() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("test.nc");
+        {
+            let mut file = netcdf::create(&path).unwrap();
+            let mut var = file.add_variable::<f32>("v", &[]).unwrap();
+            var.put_value(42.0_f32, ..).unwrap();
+        }
+        let ds = DataReader::read_file(&path).unwrap();
+        let v = ds
+            .root_node
+            .children
+            .iter()
+            .find(|n| n.name == "v")
+            .unwrap();
+        assert_eq!(v.sample.as_deref(), Some([42.0].as_slice()));
+    }
+
+    #[test]
+    fn sample_1d_partial() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("test.nc");
+        let data: Vec<f32> = (0..20).map(|i| i as f32).collect();
+        write_test_nc(&path, &[20], &data);
+        let ds = DataReader::read_file(&path).unwrap();
+        let v = ds
+            .root_node
+            .children
+            .iter()
+            .find(|n| n.name == "v")
+            .unwrap();
+        let sample = v.sample.as_ref().expect("1D should have sample");
+        assert_eq!(sample.len(), 6);
+        assert_eq!(sample[0], 0.0);
+        assert_eq!(sample[5], 5.0);
+    }
+
+    #[test]
+    fn sample_2d_partial() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("test.nc");
+        let data: Vec<f32> = (0..50).map(|i| i as f32).collect();
+        write_test_nc(&path, &[5, 10], &data);
+        let ds = DataReader::read_file(&path).unwrap();
+        let v = ds
+            .root_node
+            .children
+            .iter()
+            .find(|n| n.name == "v")
+            .unwrap();
+        let sample = v.sample.as_ref().expect("2D should have sample");
+        // shape=[5,10]: reads 3 rows × 4 cols = 12 values, row-major
+        // row 0: 0,1,2,3  row 1: 10,11,12,13  row 2: 20,21,22,23
+        assert_eq!(sample.len(), 12);
+        assert_eq!(sample[0], 0.0); // [0,0]
+        assert_eq!(sample[3], 3.0); // [0,3]
+        assert_eq!(sample[4], 10.0); // [1,0]
+        assert_eq!(sample[11], 23.0); // [2,3]
+    }
+
+    #[test]
+    fn sample_3d_partial() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("test.nc");
+        let data: Vec<f32> = (0..24).map(|i| i as f32).collect();
+        write_test_nc(&path, &[2, 3, 4], &data);
+        let ds = DataReader::read_file(&path).unwrap();
+        let v = ds
+            .root_node
+            .children
+            .iter()
+            .find(|n| n.name == "v")
+            .unwrap();
+        let sample = v.sample.as_ref().expect("3D should have sample");
+        // shape[2]=4 < 6, so get all 4 values from first element of other dims
+        assert_eq!(sample.len(), 4);
+        assert_eq!(sample[0], 0.0);
+        assert_eq!(sample[3], 3.0);
     }
 }

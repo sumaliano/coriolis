@@ -202,6 +202,12 @@ impl DataViewerState {
     pub fn load_variable(&mut self, var: LoadedVariable) {
         let ndim = var.ndim();
 
+        // Pick the most useful default view for the variable's rank.
+        self.view_mode = match ndim {
+            0 | 1 => ViewMode::Plot1D,
+            _ => ViewMode::Heatmap,
+        };
+
         // Initialize slicing state with active selector already set
         self.slicing = SlicingState::new(ndim, self.view_mode);
 
@@ -675,14 +681,15 @@ mod tests {
     #[test]
     fn cycle_view_mode_wraps_around() {
         let mut state = DataViewerState::new();
+        // 2D variable defaults to Heatmap; verify full cycle from there.
         state.load_variable(make_var(vec![0.0; 6], vec![2, 3], vec!["y", "x"]));
+        assert_eq!(state.view_mode, ViewMode::Heatmap);
+        state.cycle_view_mode();
         assert_eq!(state.view_mode, ViewMode::Table);
         state.cycle_view_mode();
         assert_eq!(state.view_mode, ViewMode::Plot1D);
         state.cycle_view_mode();
         assert_eq!(state.view_mode, ViewMode::Heatmap);
-        state.cycle_view_mode();
-        assert_eq!(state.view_mode, ViewMode::Table);
     }
 
     #[test]
