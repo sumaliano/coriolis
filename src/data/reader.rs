@@ -2,6 +2,7 @@
 
 use super::{DataNode, DatasetInfo, NodeType};
 use crate::error::Result;
+use netcdf::types::{FloatType, IntType, NcVariableType};
 use std::path::Path;
 
 /// NetCDF data reader.
@@ -109,12 +110,15 @@ impl DataReader {
         let mut var_node = DataNode::new(var_name.to_string(), var_path, NodeType::Variable);
 
         // Get shape and type
-        var_node.shape = Some(
-            var.dimensions()
-                .iter()
-                .map(|d: &netcdf::Dimension<'_>| d.len())
-                .collect(),
-        );
+        let shape: Vec<usize> = var
+            .dimensions()
+            .iter()
+            .map(|d: &netcdf::Dimension<'_>| d.len())
+            .collect();
+
+        let total: usize = shape.iter().product();
+        var_node.sample = Self::try_read_sample(var, total);
+        var_node.shape = Some(shape);
         var_node.dtype = Some(format!("{:?}", var.vartype()));
 
         // Dimension names
@@ -135,6 +139,42 @@ impl DataReader {
         }
 
         var_node
+    }
+
+    /// Try to read all values for small variables (≤ 10 elements) as f64.
+    /// Returns None for large variables, string types, or read errors.
+    fn try_read_sample(var: &netcdf::Variable<'_>, total: usize) -> Option<Vec<f64>> {
+        if total == 0 || total > 10 {
+            return None;
+        }
+        match var.vartype() {
+            NcVariableType::Float(FloatType::F64) => var.get_values::<f64, _>(..).ok(),
+            NcVariableType::Float(FloatType::F32) => {
+                let v: Vec<f32> = var.get_values(..).ok()?;
+                Some(v.into_iter().map(|x| x as f64).collect())
+            },
+            NcVariableType::Int(IntType::I64) => {
+                let v: Vec<i64> = var.get_values(..).ok()?;
+                Some(v.into_iter().map(|x| x as f64).collect())
+            },
+            NcVariableType::Int(IntType::I32) => {
+                let v: Vec<i32> = var.get_values(..).ok()?;
+                Some(v.into_iter().map(|x| x as f64).collect())
+            },
+            NcVariableType::Int(IntType::I16) => {
+                let v: Vec<i16> = var.get_values(..).ok()?;
+                Some(v.into_iter().map(|x| x as f64).collect())
+            },
+            NcVariableType::Int(IntType::U32) => {
+                let v: Vec<u32> = var.get_values(..).ok()?;
+                Some(v.into_iter().map(|x| x as f64).collect())
+            },
+            NcVariableType::Int(IntType::U16) => {
+                let v: Vec<u16> = var.get_values(..).ok()?;
+                Some(v.into_iter().map(|x| x as f64).collect())
+            },
+            _ => None,
+        }
     }
 
     /// Convert a NetCDF attribute value to a string representation.

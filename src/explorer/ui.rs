@@ -70,6 +70,7 @@ pub fn draw(f: &mut Frame<'_>, app: &mut App) {
         app.data_viewer.visible,
         app.search.is_active(),
         app.pending_g,
+        app.explorer.show_preview,
         &colors,
     );
 
@@ -133,6 +134,7 @@ fn draw_keymap(
     data_viewer_visible: bool,
     search_active: bool,
     pending_g: bool,
+    show_preview: bool,
     colors: &ThemeColors,
 ) {
     let keymap_text = if pending_g {
@@ -143,6 +145,8 @@ fn draw_keymap(
         "Pan: hjkl | View: Tab | Slice: s +-[] | Dims: yx | Rotate: r | Copy: c | Quit: q/Esc"
     } else if search_active {
         "Search: Enter | Cancel: Esc | Type to search..."
+    } else if show_preview {
+        "Nav: hjkl/↑↓ | Scroll details: ^D/^U | Search: / n N | Plot: p | Copy: c y | t=hide | Quit: q"
     } else {
         "Nav: hjkl/↑↓ | Search: / n N | Details: t | Plot: p | Copy: c y | Theme: T | Help: ? | Quit: q"
     };

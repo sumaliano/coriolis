@@ -32,6 +32,9 @@ pub struct DataNode {
     pub shape: Option<Vec<usize>>,
     /// Data type for variable nodes.
     pub dtype: Option<String>,
+    /// Raw sample values for small variables (≤ 10 elements), loaded at file-open time.
+    /// None for large variables or non-numeric types.
+    pub sample: Option<Vec<f64>>,
 }
 
 impl DataNode {
@@ -46,6 +49,7 @@ impl DataNode {
             attributes: HashMap::new(),
             shape: None,
             dtype: None,
+            sample: None,
         }
     }
 

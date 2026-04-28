@@ -8,6 +8,18 @@ use ratatui::{
     text::{Line, Span},
 };
 
+/// CF-convention attributes that are shown prominently, not buried in the attribute list.
+const CF_KEY_ATTRS: &[&str] = &[
+    "long_name",
+    "standard_name",
+    "units",
+    "_FillValue",
+    "missing_value",
+    "valid_min",
+    "valid_max",
+    "valid_range",
+];
+
 /// Format node details for display in the details pane.
 pub fn format_node_details(
     node: &DataNode,
@@ -22,7 +34,6 @@ pub fn format_node_details(
         return format_variable_details(node, colors, width);
     }
 
-    // Generic node format
     vec![
         Line::from(Span::styled(
             node.display_name(),
@@ -37,7 +48,6 @@ pub fn format_node_details(
     ]
 }
 
-/// Format variable node details.
 fn format_variable_details(
     node: &DataNode,
     colors: &ThemeColors,
@@ -55,24 +65,45 @@ fn format_variable_details(
             "─".repeat(sep_width),
             Style::default().fg(colors.bg2),
         )),
-        Line::from(vec![
-            Span::styled("Type: ", Style::default().fg(colors.fg1)),
-            Span::styled("variable", Style::default().fg(colors.aqua)),
-        ]),
-        Line::from(vec![
-            Span::styled("Path: ", Style::default().fg(colors.fg1)),
-            Span::styled(node.path.clone(), Style::default().fg(colors.fg0)),
-        ]),
-        Line::from(""),
-        Line::from(Span::styled(
-            "Array Info:",
-            Style::default()
-                .fg(colors.yellow)
-                .add_modifier(Modifier::BOLD),
-        )),
     ];
 
-    // Dimensions type
+    // CF key attributes surfaced first for quick orientation
+    if let Some(long_name) = node.attributes.get("long_name") {
+        lines.push(Line::from(Span::styled(
+            long_name.clone(),
+            Style::default().fg(colors.fg0),
+        )));
+    }
+    if let Some(standard_name) = node.attributes.get("standard_name") {
+        lines.push(Line::from(vec![
+            Span::styled("CF: ", Style::default().fg(colors.fg1)),
+            Span::styled(standard_name.clone(), Style::default().fg(colors.fg1)),
+        ]));
+    }
+    if let Some(units) = node.attributes.get("units") {
+        lines.push(Line::from(vec![
+            Span::styled("Units: ", Style::default().fg(colors.fg1)),
+            Span::styled(units.clone(), Style::default().fg(colors.green)),
+        ]));
+    }
+
+    lines.push(Line::from(""));
+    lines.push(Line::from(vec![
+        Span::styled("Type: ", Style::default().fg(colors.fg1)),
+        Span::styled("variable", Style::default().fg(colors.aqua)),
+    ]));
+    lines.push(Line::from(vec![
+        Span::styled("Path: ", Style::default().fg(colors.fg1)),
+        Span::styled(node.path.clone(), Style::default().fg(colors.fg0)),
+    ]));
+    lines.push(Line::from(""));
+    lines.push(Line::from(Span::styled(
+        "Array Info:",
+        Style::default()
+            .fg(colors.yellow)
+            .add_modifier(Modifier::BOLD),
+    )));
+
     if let (Some(dim_str), Some(shape)) = (node.metadata.get("dims"), &node.shape) {
         let dim_type = get_dimension_type(dim_str, shape);
         lines.push(Line::from(vec![
@@ -80,7 +111,6 @@ fn format_variable_details(
             Span::styled(dim_type, Style::default().fg(colors.red)),
         ]));
 
-        // Shape
         let dims = parse_dimensions(dim_str, shape);
         if !dims.is_empty() {
             let mut shape_spans = vec![Span::styled("  Shape: ", Style::default().fg(colors.fg1))];
@@ -102,7 +132,6 @@ fn format_variable_details(
         }
     }
 
-    // Data type
     if let Some(dtype) = &node.dtype {
         lines.push(Line::from(vec![
             Span::styled("  Data type: ", Style::default().fg(colors.fg1)),
@@ -110,7 +139,6 @@ fn format_variable_details(
         ]));
     }
 
-    // Size
     if let Some(shape) = &node.shape {
         let total: usize = shape.iter().product();
         lines.push(Line::from(vec![
@@ -122,29 +150,64 @@ fn format_variable_details(
         ]));
     }
 
-    lines.push(Line::from(""));
+    // Sample values for small variables — lets users check coordinates / flag values inline
+    if let Some(sample) = &node.sample {
+        lines.push(Line::from(""));
+        lines.push(Line::from(Span::styled(
+            "Values:",
+            Style::default()
+                .fg(colors.yellow)
+                .add_modifier(Modifier::BOLD),
+        )));
+        let formatted: Vec<String> = sample.iter().map(|v| format_sample_value(*v)).collect();
+        lines.push(Line::from(Span::styled(
+            format!("  {}", formatted.join(",  ")),
+            Style::default().fg(colors.aqua),
+        )));
+    }
 
-    // Attributes
-    if !node.attributes.is_empty() {
+    // Fill value / valid range — prominently if no sample
+    if node.sample.is_none() {
+        let fill = node
+            .attributes
+            .get("_FillValue")
+            .or_else(|| node.attributes.get("missing_value"));
+        if let Some(fv) = fill {
+            lines.push(Line::from(""));
+            lines.push(Line::from(vec![
+                Span::styled("  Fill value: ", Style::default().fg(colors.fg1)),
+                Span::styled(fv.clone(), Style::default().fg(colors.orange)),
+            ]));
+        }
+    }
+
+    // Remaining attributes (skip CF key ones already shown above)
+    let other_attrs: Vec<(&String, &String)> = node
+        .attributes
+        .iter()
+        .filter(|(k, _)| !CF_KEY_ATTRS.contains(&k.as_str()))
+        .collect();
+
+    if !other_attrs.is_empty() {
+        lines.push(Line::from(""));
         lines.push(Line::from(Span::styled(
             "Attributes:",
             Style::default()
                 .fg(colors.yellow)
                 .add_modifier(Modifier::BOLD),
         )));
-
-        for (key, value) in &node.attributes {
+        let mut sorted: Vec<_> = other_attrs;
+        sorted.sort_by_key(|(k, _)| k.as_str());
+        for (key, value) in sorted {
             lines.push(Line::from(vec![
                 Span::styled(format!("  :{}", key), Style::default().fg(colors.orange)),
                 Span::styled(" = ", Style::default().fg(colors.fg1)),
-                Span::styled(value.to_string(), Style::default().fg(colors.fg0)),
+                Span::styled(value.clone(), Style::default().fg(colors.fg0)),
             ]));
         }
-
-        lines.push(Line::from(""));
     }
 
-    // Actions
+    lines.push(Line::from(""));
     lines.push(Line::from(Span::styled(
         "Actions:",
         Style::default()
@@ -154,6 +217,13 @@ fn format_variable_details(
     lines.push(Line::from(vec![
         Span::styled("Press ", Style::default().fg(colors.fg1)),
         Span::styled(
+            "Enter",
+            Style::default()
+                .fg(colors.yellow)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::styled(" or ", Style::default().fg(colors.fg1)),
+        Span::styled(
             "p",
             Style::default()
                 .fg(colors.yellow)
@@ -161,15 +231,10 @@ fn format_variable_details(
         ),
         Span::styled(" to open data viewer", Style::default().fg(colors.fg1)),
     ]));
-    lines.push(Line::from(Span::styled(
-        "Statistics and visualizations available",
-        Style::default().fg(colors.fg1),
-    )));
 
     lines
 }
 
-/// Format group node details.
 fn format_group_details(node: &DataNode, colors: &ThemeColors, width: u16) -> Vec<Line<'static>> {
     let sep_width = (width as usize).saturating_sub(2).max(1);
     let mut lines = vec![
@@ -209,12 +274,14 @@ fn format_group_details(node: &DataNode, colors: &ThemeColors, width: u16) -> Ve
                 .add_modifier(Modifier::BOLD),
         )));
 
-        for (key, value) in dims {
+        let mut sorted_dims: Vec<_> = dims;
+        sorted_dims.sort_by_key(|(k, _)| k.as_str());
+        for (key, value) in sorted_dims {
             let dim_name = key.strip_prefix("dim_").unwrap_or(key);
             lines.push(Line::from(vec![
                 Span::styled(format!("  {}", dim_name), Style::default().fg(colors.aqua)),
                 Span::styled(" = ", Style::default().fg(colors.fg1)),
-                Span::styled(value.to_string(), Style::default().fg(colors.red)),
+                Span::styled(value.clone(), Style::default().fg(colors.red)),
             ]));
         }
         lines.push(Line::from(""));
@@ -264,15 +331,15 @@ fn format_group_details(node: &DataNode, colors: &ThemeColors, width: u16) -> Ve
                 }
             }
 
-            lines.push(Line::from(var_spans));
-
-            for (key, value) in &var.attributes {
-                lines.push(Line::from(vec![
-                    Span::styled(format!("    :{}", key), Style::default().fg(colors.orange)),
-                    Span::styled(" = ", Style::default().fg(colors.fg1)),
-                    Span::styled(value.to_string(), Style::default().fg(colors.fg0)),
-                ]));
+            // Show long_name inline if present
+            if let Some(long_name) = var.attributes.get("long_name") {
+                var_spans.push(Span::styled(
+                    format!("  {}", long_name),
+                    Style::default().fg(colors.fg1),
+                ));
             }
+
+            lines.push(Line::from(var_spans));
         }
         lines.push(Line::from(""));
     }
@@ -314,14 +381,40 @@ fn format_group_details(node: &DataNode, colors: &ThemeColors, width: u16) -> Ve
                 .add_modifier(Modifier::BOLD),
         )));
 
-        for (key, value) in &node.attributes {
+        let mut sorted: Vec<_> = node.attributes.iter().collect();
+        sorted.sort_by_key(|(k, _)| k.as_str());
+        for (key, value) in sorted {
             lines.push(Line::from(vec![
                 Span::styled(format!("  :{}", key), Style::default().fg(colors.orange)),
                 Span::styled(" = ", Style::default().fg(colors.fg1)),
-                Span::styled(value.to_string(), Style::default().fg(colors.fg0)),
+                Span::styled(value.clone(), Style::default().fg(colors.fg0)),
             ]));
         }
     }
 
     lines
+}
+
+/// Format a single sample value with smart precision.
+fn format_sample_value(v: f64) -> String {
+    if v.is_nan() {
+        return "NaN".to_string();
+    }
+    if v.is_infinite() {
+        return if v.is_sign_positive() {
+            "+Inf".to_string()
+        } else {
+            "-Inf".to_string()
+        };
+    }
+    let abs = v.abs();
+    if abs == 0.0 {
+        "0".to_string()
+    } else if !(1e-3..1e6).contains(&abs) {
+        format!("{:.3e}", v)
+    } else if abs >= 100.0 {
+        format!("{:.2}", v)
+    } else {
+        format!("{:.4}", v)
+    }
 }

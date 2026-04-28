@@ -4,11 +4,56 @@ use crate::data::DataNode;
 use crate::error::Result;
 use arboard::Clipboard;
 
-/// Copy text to clipboard.
+/// Copy text to clipboard, with fallbacks for WSL and headless Linux.
 fn copy_to_clipboard(text: &str) -> Result<()> {
-    let mut clipboard = Clipboard::new()?;
-    clipboard.set_text(text)?;
-    Ok(())
+    // 1. arboard (works when X11/Wayland display is available)
+    if let Ok(mut cb) = Clipboard::new() {
+        if cb.set_text(text).is_ok() {
+            return Ok(());
+        }
+    }
+
+    // 2. WSL: clip.exe (Windows clipboard, always available in WSL2)
+    if try_pipe_to_cmd("clip.exe", text) {
+        return Ok(());
+    }
+
+    // 3. Wayland (wl-copy)
+    if try_pipe_to_cmd("wl-copy", text) {
+        return Ok(());
+    }
+
+    // 4. X11 (xclip)
+    if try_pipe_to_cmd_args("xclip", &["-selection", "clipboard"], text) {
+        return Ok(());
+    }
+
+    Err(crate::error::CoriolisError::Clipboard(
+        arboard::Error::Unknown {
+            description: "No clipboard backend available. On WSL ensure clip.exe is accessible or set DISPLAY.".to_string(),
+        },
+    ))
+}
+
+fn try_pipe_to_cmd(cmd: &str, text: &str) -> bool {
+    try_pipe_to_cmd_args(cmd, &[], text)
+}
+
+fn try_pipe_to_cmd_args(cmd: &str, args: &[&str], text: &str) -> bool {
+    use std::io::Write;
+    use std::process::{Command, Stdio};
+
+    let mut child = match Command::new(cmd).args(args).stdin(Stdio::piped()).spawn() {
+        Ok(c) => c,
+        Err(_) => return false,
+    };
+
+    if let Some(stdin) = child.stdin.take() {
+        let mut writer = std::io::BufWriter::new(stdin);
+        let _ = writer.write_all(text.as_bytes());
+    }
+
+    child.wait().map(|s| s.success()).unwrap_or(false)
 }
 
 /// Copy tree structure to clipboard.
